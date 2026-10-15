@@ -1,0 +1,11 @@
+rootProject.name = 'e-commerce-services'
+
+include 'common-library'
+include 'config-server'
+include 'api-gateway'
+include 'identity-service'
+include 'catalog-service'
+include 'inventory-service'
+include 'order-service'
+include 'payment-service'
+include 'notification-service'
