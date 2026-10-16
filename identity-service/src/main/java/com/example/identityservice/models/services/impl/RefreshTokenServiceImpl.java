@@ -1,5 +1,7 @@
 package com.example.identityservice.models.services.impl;
 
+import com.ecommerce.common.constant.ErrorCode;
+import com.ecommerce.common.exception.BusinessException;
 import com.example.identityservice.exceptions.NotFoundException;
 import com.example.identityservice.exceptions.TokenRefreshException;
 import com.example.identityservice.models.dto.res.TokenResponseDTO;
@@ -12,10 +14,15 @@ import com.example.identityservice.security.jwt.JwtUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -32,31 +39,41 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
     private final UserRepository userRepository;
     private final JwtUtils jwtUtils;
 
-    /**
-     * Tạo mới Refresh Token dạng UUID và lưu thông tin hạn sử dụng xuống cơ sở dữ liệu.
-     * Note logic: Tìm kiếm User, xóa token cũ (nếu có) để đảm bảo mỗi phiên đăng nhập mới
-     * sẽ sở hữu token duy nhất, tránh token rác tích tụ trong database.
-     *
-     * @param userId mã định danh của User cần cấp token
-     * @return đối tượng RefreshToken đã lưu
-     */
+    public static String hashToken(String rawToken) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(rawToken.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("SHA-256 algorithm not available", e);
+        }
+    }
+
     @Override
     @Transactional
     public RefreshToken createRefreshToken(User user) {
+        return createRefreshToken(user, UUID.randomUUID());
+    }
+
+    @Transactional
+    public RefreshToken createRefreshToken(User user, UUID familyId) {
         log.info("Creating refresh token for user: {}", user.getUsername());
 
-        // Dọn dẹp token cũ của user (nếu có) bằng atomic delete để tránh NonUniqueResultException
-        refreshTokenRepository.deleteByUser(user);
+        String rawToken = UUID.randomUUID().toString();
+        String tokenHash = hashToken(rawToken);
 
         RefreshToken refreshToken = RefreshToken.builder()
                 .user(user)
-                .token(UUID.randomUUID().toString())
-                .familyId(UUID.randomUUID())
-                .expiryDate(Instant.now().plusMillis(refreshTokenDurationMs))
+                .tokenHash(tokenHash)
+                .familyId(familyId)
+                .expiresAt(Instant.now().plusMillis(refreshTokenDurationMs))
+                .revoked(false)
                 .build();
+        refreshToken.setRawToken(rawToken);
 
         RefreshToken saved = refreshTokenRepository.save(refreshToken);
-        log.info("Successfully created refresh token id: {} for user: {}", saved.getId(), user.getUsername());
+        saved.setRawToken(rawToken);
+        log.info("Successfully created refresh token id: {} with familyId: {} for user: {}", saved.getId(), familyId, user.getUsername());
         return saved;
     }
 
@@ -69,22 +86,13 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
         return createRefreshToken(user);
     }
 
-    /**
-     * Xác thực xem Refresh Token đã hết hạn hay chưa.
-     * Note logic: So sánh expiryDate với Instant.now().
-     * Nếu đã hết hạn, xóa bản ghi khỏi DB để dọn dẹp và ném TokenRefreshException.
-     * Cấu hình noRollbackFor để đảm bảo lệnh delete vẫn được commit xuống DB khi ném exception.
-     *
-     * @param token RefreshToken cần kiểm tra
-     * @return token hợp lệ nếu chưa hết hạn
-     */
     @Override
     @Transactional(noRollbackFor = TokenRefreshException.class)
     public RefreshToken verifyExpiration(RefreshToken token) {
-        if (token.getExpiryDate().compareTo(Instant.now()) < 0) {
-            log.warn("Refresh token [{}] expired at {}", token.getToken(), token.getExpiryDate());
-            refreshTokenRepository.delete(token);
-            refreshTokenRepository.flush();
+        if (token.getExpiresAt().isBefore(Instant.now())) {
+            log.warn("Refresh token [{}] expired at {}", token.getId(), token.getExpiresAt());
+            token.setRevoked(true);
+            refreshTokenRepository.save(token);
             throw new TokenRefreshException(token.getToken(), "Invalid or expired refresh token. Please make a new signin request");
         }
         return token;
@@ -92,7 +100,8 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
 
     @Override
     public Optional<RefreshToken> findByToken(String token) {
-        return refreshTokenRepository.findByToken(token);
+        String tokenHash = hashToken(token);
+        return refreshTokenRepository.findByTokenHash(tokenHash);
     }
 
     @Override
@@ -114,48 +123,52 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
         return refreshTokenRepository.deleteByUser(user);
     }
 
-    /**
-     * Xử lý cấp lại Token mới (Token Rotation):
-     * Note giải thích logic:
-     * 1. Tìm RefreshToken trong DB bằng chuỗi requestToken với PESSIMISTIC_WRITE lock (SELECT FOR UPDATE)
-     *    để ngăn chặn race condition/replay attack khi 2 request cùng gửi một token đồng thời.
-     * 2. Kiểm tra token đã hết hạn chưa qua verifyExpiration. Nếu hết hạn, phương thức sẽ xóa token và ném TokenRefreshException (403).
-     *    Nhờ cấu hình noRollbackFor = TokenRefreshException.class, lệnh xóa token hết hạn sẽ được commit thành công xuống DB.
-     * 3. (QUAN TRỌNG - Rotation): Xóa bản ghi Refresh Token cũ khỏi DB để ngăn chặn tấn công chiếm hữu / replay phiên làm việc.
-     * 4. Lấy User từ token cũ, gọi JwtUtils để tạo Access Token mới.
-     * 5. Gọi hàm createRefreshToken(user) để tạo Refresh Token hoàn toàn mới và lưu vào DB.
-     * 6. Trả về cặp Token mới (TokenResponseDTO) cho Client.
-     *
-     * @param requestToken chuỗi refresh token do client gửi lên
-     * @return TokenResponseDTO chứa accessToken mới và refreshToken mới
-     */
     @Override
-    @Transactional(noRollbackFor = TokenRefreshException.class)
+    @Transactional(noRollbackFor = {TokenRefreshException.class, BusinessException.class, AccessDeniedException.class})
     public TokenResponseDTO refreshToken(String requestToken) {
         log.info("Processing token rotation for refresh token");
+        if (requestToken == null || requestToken.isBlank()) {
+            throw new BusinessException(ErrorCode.AUTHENTICATION_REQUIRED, "Mã refresh token không được để trống");
+        }
 
-        // 1. Tìm RefreshToken trong DB với PESSIMISTIC_WRITE lock để ngăn chặn 2 request đồng thời
-        RefreshToken token = refreshTokenRepository.findByTokenWithLock(requestToken)
-                .orElseThrow(() -> {
-                    log.warn("Token rotation failed: Refresh token not found or already revoked");
-                    return new TokenRefreshException(requestToken, "Invalid or expired refresh token. Please make a new signin request");
-                });
+        String tokenHash = hashToken(requestToken);
 
-        // 2. Kiểm tra token đã hết hạn chưa. Nếu hết hạn, verifyExpiration xóa token và ném TokenRefreshException.
-        verifyExpiration(token);
+        // 1. Tìm RefreshToken trong DB với PESSIMISTIC_WRITE lock
+        RefreshToken token = refreshTokenRepository.findByTokenHashWithLock(tokenHash)
+                .orElseGet(() -> refreshTokenRepository.findByTokenWithLock(requestToken).orElse(null));
+
+        if (token == null) {
+            log.warn("Token rotation failed: Refresh token not found");
+            throw new BusinessException(ErrorCode.AUTHENTICATION_REQUIRED, "Phiên đăng nhập không hợp lệ hoặc đã hết hạn");
+        }
+
+        // 2. Token Reuse Detection
+        if (token.isRevoked()) {
+            log.warn("SECURITY ALERT: Refresh token reuse detected for token id: {}, familyId: {}. Revoking family!",
+                    token.getId(), token.getFamilyId());
+            refreshTokenRepository.revokeEntireFamily(token.getFamilyId());
+            throw new BusinessException(ErrorCode.ACCESS_DENIED, "Phát hiện hành vi sử dụng lại mã phiên. Toàn bộ phiên làm việc liên quan đã bị hủy vì lý do an toàn.");
+        }
+
+        // 3. Kiểm tra hết hạn
+        if (token.getExpiresAt().isBefore(Instant.now())) {
+            log.warn("Refresh token expired at: {}", token.getExpiresAt());
+            token.setRevoked(true);
+            refreshTokenRepository.save(token);
+            throw new BusinessException(ErrorCode.AUTHENTICATION_REQUIRED, "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+        }
+
+        // 4. Token Rotation hợp lệ: Đánh dấu token cũ đã bị thu hồi
+        token.setRevoked(true);
+        refreshTokenRepository.save(token);
 
         User user = token.getUser();
 
-        // 3. (QUAN TRỌNG - Rotation): Xóa bản ghi Refresh Token cũ khỏi DB
-        refreshTokenRepository.delete(token);
-        refreshTokenRepository.flush();
-        log.info("Old refresh token id [{}] deleted for user: {}", token.getId(), user.getUsername());
+        // 5. Sinh Refresh Token mới kế thừa cùng familyId
+        RefreshToken newRefreshToken = createRefreshToken(user, token.getFamilyId());
 
-        // 4. Lấy User từ token cũ, gọi JwtUtils để tạo Access Token mới
+        // 6. Sinh Access Token mới
         String newAccessToken = jwtUtils.generateAccessToken(user);
-
-        // 5. Gọi hàm createRefreshToken để tạo Refresh Token hoàn toàn mới
-        RefreshToken newRefreshToken = createRefreshToken(user);
 
         List<String> roles = user.getRoles() != null
                 ? user.getRoles().stream()
@@ -163,10 +176,9 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
                     .toList()
                 : List.of();
 
-        log.info("Token rotation completed successfully for user: {}. New refresh token id: {}",
-                user.getUsername(), newRefreshToken.getId());
+        log.info("Token rotation completed successfully for user: {}. New refresh token family: {}",
+                user.getUsername(), token.getFamilyId());
 
-        // 6. Trả về cặp Token mới cho Client
         return new TokenResponseDTO(
                 newAccessToken,
                 newRefreshToken.getToken(),

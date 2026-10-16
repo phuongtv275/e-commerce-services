@@ -45,9 +45,12 @@ public class RefreshToken {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    @Transient
+    private String rawToken;
+
     // Backward compatibility helper
     public String getToken() {
-        return this.tokenHash;
+        return this.rawToken != null ? this.rawToken : this.tokenHash;
     }
 
     public void setToken(String token) {

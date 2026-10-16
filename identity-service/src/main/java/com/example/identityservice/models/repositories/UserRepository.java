@@ -24,6 +24,8 @@ public interface UserRepository extends JpaRepository<User, UUID>, JpaSpecificat
 
     Optional<User> findByIdAndDeletedAtIsNull(UUID id);
 
+    Optional<User> findByVerificationTokenHashAndDeletedAtIsNull(String verificationTokenHash);
+
     default Optional<User> findByUsername(String username) {
         return findByEmailAndDeletedAtIsNull(username);
     }
