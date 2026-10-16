@@ -3,7 +3,7 @@
 Backend Microservices platform for multi-channel e-commerce system built with Spring Boot, Spring Cloud, Gradle, and Docker.
 
 - **Artifact Name:** `e-commerce-services`
-- **Version:** `0.1.5` (Semantic Versioning)
+- **Version:** `0.1.6` (Semantic Versioning)
 - **External Config Repository:** `../e-commerce-services-config`
 
 ---
@@ -13,13 +13,13 @@ Backend Microservices platform for multi-channel e-commerce system built with Sp
 | Service | Port | Description | Technology Stack |
 | :--- | :---: | :--- | :--- |
 | **common-library** | N/A | Shared Library: API Response, Global Exception, Tracing & Zero-Trust Filters, Transactional Outbox, Event Contracts, Idempotency | Plain Java Library (`java-library`), Java 21, Spring Boot BOM |
-| **api-gateway** | `8080` | Edge Gateway, Routing, Rate Limiting | Spring Cloud Gateway (WebFlux), Eureka Client |
-| **identity-service** | `8081` | Authentication, Authorization, Users | Spring Boot WebMVC, PostgreSQL (`identity_db`) |
-| **catalog-service** | `8082` | Products, Categories, Search | Spring Boot WebMVC, PostgreSQL (`catalog_db`), Elasticsearch |
-| **inventory-service** | `8083` | Stock, Warehouses, Distributed Locks | Spring Boot WebMVC, PostgreSQL (`inventory_db`), Redis |
-| **order-service** | `8084` | Cart, Orders, Checkout | Spring Boot WebMVC, PostgreSQL (`order_db`), Kafka |
-| **payment-service** | `8085` | Payment Transactions, Refunds | Spring Boot WebMVC, PostgreSQL (`payment_db`) |
-| **notification-service** | `8086` | Email, SMS, Webhook Notifications | Spring Boot WebMVC, PostgreSQL (`notification_db`), MailHog |
+| **api-gateway** | `8080` | Single Public Entrypoint, Centralized Routing, Header Sanitization, JWT Auth & Blacklist, RSA Assertion Signing (Audience Binding), Redis Rate Limiter, W3C CORS & Security Headers | Spring Cloud Gateway (WebFlux), Reactive Redis, Eureka Client |
+| **identity-service** | Internal (`8081`) | Authentication, Authorization, Users (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`identity_db`) |
+| **catalog-service** | Internal (`8082`) | Products, Categories, Search (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`catalog_db`), Elasticsearch |
+| **inventory-service** | Internal (`8083`) | Stock, Warehouses, Distributed Locks (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`inventory_db`), Redis |
+| **order-service** | Internal (`8084`) | Cart, Orders, Checkout (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`order_db`), Kafka |
+| **payment-service** | Internal (`8085`) | Payment Transactions, Refunds (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`payment_db`) |
+| **notification-service** | Internal (`8086`) | Email, SMS, Webhook Notifications (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`notification_db`), MailHog |
 | **eureka-server** | `8761` | Service Registry & Discovery | Spring Cloud Netflix Eureka Server |
 | **config-server** | `8888` | Centralized Configuration Management | Spring Cloud Config Server (`native` profile) |
 | **PostgreSQL** | `5432` | Multi-Tenant Database | PostgreSQL 16 Alpine (6 independent databases) |

@@ -5,7 +5,7 @@ plugins {
 }
 
 group = 'com.example'
-version = '0.1.0'
+version = '0.1.6'
 description = 'api-gateway'
 
 java {
@@ -27,6 +27,22 @@ dependencies {
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
     implementation 'org.springframework.cloud:spring-cloud-starter-config'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // Reactive Redis
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis-reactive'
+
+    // Tích hợp common-library (loại trừ Servlet Web, JPA, Kafka để bảo đảm WebFlux thuần reactive)
+    implementation(project(':common-library')) {
+        exclude group: 'org.springframework.boot', module: 'spring-boot-starter-web'
+        exclude group: 'org.springframework.boot', module: 'spring-boot-starter-data-jpa'
+        exclude group: 'org.springframework.kafka', module: 'spring-kafka'
+    }
+
+    // JJWT 0.12.6
+    implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
+
     compileOnly 'org.projectlombok:lombok'
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
     annotationProcessor 'org.projectlombok:lombok'
