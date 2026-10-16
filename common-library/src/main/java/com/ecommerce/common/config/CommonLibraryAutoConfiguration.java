@@ -21,7 +21,6 @@ import org.springframework.boot.autoconfigure.AutoConfigurationPackages;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
-import org.springframework.boot.autoconfigure.domain.EntityScanPackages;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -32,16 +31,18 @@ import org.springframework.core.type.AnnotationMetadata;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
-import org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration;
-import org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration;
-
 import java.security.KeyFactory;
 import java.security.PublicKey;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
 
 @Slf4j
-@AutoConfiguration(after = {JpaRepositoriesAutoConfiguration.class, HibernateJpaAutoConfiguration.class})
+@AutoConfiguration(afterName = {
+        "org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration",
+        "org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration",
+        "org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration",
+        "org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration"
+})
 @EnableConfigurationProperties(CommonLibrarySecurityProperties.class)
 @Import(CommonLibraryAutoConfiguration.CommonLibraryPackagesRegistrar.class)
 public class CommonLibraryAutoConfiguration {
@@ -50,7 +51,6 @@ public class CommonLibraryAutoConfiguration {
         @Override
         public void registerBeanDefinitions(AnnotationMetadata importingClassMetadata, BeanDefinitionRegistry registry) {
             AutoConfigurationPackages.register(registry, "com.ecommerce.common");
-            EntityScanPackages.register(registry, "com.ecommerce.common");
         }
     }
 
