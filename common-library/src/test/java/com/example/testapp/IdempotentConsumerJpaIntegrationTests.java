@@ -171,7 +171,7 @@ public class IdempotentConsumerJpaIntegrationTests {
     }
 
     @Test
-    @DisplayName("Positive & Integration: Khi caller transaction rollback sau khi callback thành công, COMPLETED claim cũng bị rollback đồng bộ")
+    @DisplayName("Positive & Integration: Khi caller transaction rollback sau khi callback thành công, claim được tự động release và retry ngay thành công")
     void testCallerTransactionRollback_RollsBackCompletedClaim_Positive() {
         String eventId = "caller-rollback-" + System.currentTimeMillis();
         String consumerGroup = "rollback-group";
@@ -182,16 +182,25 @@ public class IdempotentConsumerJpaIntegrationTests {
         transactionTemplate.execute(status -> {
             boolean processed = idempotentConsumerHelper.processIdempotent(eventId, consumerGroup, "Data", p -> {});
             assertTrue(processed);
-            status.setRollbackOnly(); // Ép caller transaction rollback
+            status.setRollbackOnly(); // Ép caller transaction rollback sau khi helper trả về
             return null;
         });
 
-        // Trạng thái trong DB không được là COMPLETED (vì đã bị rollback cùng caller)
-        var recordOpt = processedEventRepository.findByEventIdAndConsumerGroup(eventId, consumerGroup);
-        if (recordOpt.isPresent()) {
-            assertNotEquals(ProcessedStatus.COMPLETED, recordOpt.get().getStatus(),
-                    "Claim tuyệt đối không được ở trạng thái COMPLETED khi transaction của caller bị rollback");
-        }
+        // Bản ghi claim PROCESSING phải được TransactionSynchronization giải phóng ngay lập tức
+        boolean existsAfterRollback = processedEventRepository.existsByEventIdAndConsumerGroup(eventId, consumerGroup);
+        assertFalse(existsAfterRollback, "Claim phải được tự động giải phóng khi caller rollback để Kafka có thể retry ngay lập tức");
+
+        // Lần giao lại (retry) ngay lập tức phải được xử lý thành công
+        AtomicBoolean retrySuccess = new AtomicBoolean(false);
+        transactionTemplate.execute(status -> {
+            boolean processed = idempotentConsumerHelper.processIdempotent(eventId, consumerGroup, "Data", p -> {
+                retrySuccess.set(true);
+            });
+            assertTrue(processed);
+            return null;
+        });
+
+        assertTrue(retrySuccess.get(), "Lần giao lại ngay sau khi caller rollback phải được thực thi thành công");
     }
 
     @Test

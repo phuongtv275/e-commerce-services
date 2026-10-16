@@ -2,6 +2,8 @@ package com.ecommerce.common.idempotency;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.function.Consumer;
 
@@ -27,6 +29,21 @@ public class IdempotentConsumerHelper {
             log.info("Event id={} was already processed or claimed by consumer group {}. Skipping duplicate message.",
                     eventId, consumerGroup);
             return false;
+        }
+
+        // Đăng ký TransactionSynchronization để nếu caller transaction bị rollback (kể cả sau khi helper trả về),
+        // claim PROCESSING sẽ được tự động giải phóng ngay lập tức, giúp Kafka retry tức thì mà không bị chặn duplicate
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCompletion(int status) {
+                    if (status == TransactionSynchronization.STATUS_ROLLED_BACK) {
+                        log.info("Caller transaction rolled back. Releasing claim for event id={} in group {}",
+                                eventId, consumerGroup);
+                        claimManager.release(eventId, consumerGroup);
+                    }
+                }
+            });
         }
 
         try {
