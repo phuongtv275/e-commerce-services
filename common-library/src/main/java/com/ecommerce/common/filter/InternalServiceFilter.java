@@ -74,7 +74,9 @@ public class InternalServiceFilter extends OncePerRequestFilter {
         }
 
         String expectedKey = internalServiceKeys.get(callingService);
-        if (expectedKey == null || !expectedKey.equals(serviceKey)) {
+        if (expectedKey == null || !java.security.MessageDigest.isEqual(
+                expectedKey.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                serviceKey.getBytes(java.nio.charset.StandardCharsets.UTF_8))) {
             log.warn("Invalid internal service key for caller {} on {}", callingService, request.getRequestURI());
             sendErrorResponse(response, HttpStatus.FORBIDDEN, ErrorCode.ACCESS_DENIED,
                     "Khóa dịch vụ nội bộ không hợp lệ");

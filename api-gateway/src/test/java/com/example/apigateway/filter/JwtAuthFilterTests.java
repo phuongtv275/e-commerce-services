@@ -41,7 +41,9 @@ class JwtAuthFilterTests {
         jwtUtils = mock(JwtUtils.class);
         jwtProperties = new JwtProperties();
         jwtProperties.setWhitelistPaths(List.of(
-                "/api/v1/auth/**",
+                "/api/v1/auth/login",
+                "/api/v1/auth/register",
+                "/api/v1/auth/refresh-token",
                 "/api/v1/catalog/products/**",
                 "/actuator/**"
         ));
@@ -234,5 +236,17 @@ class JwtAuthFilterTests {
         filter.filter(exchange, chain).block();
 
         verify(assertionSigner).signAssertion(eq("admin-user"), any(), eq("payment-service"));
+    }
+
+    @Test
+    @DisplayName("Protected auth endpoint /api/v1/auth/change-password without token should return 401")
+    void testProtectedAuthEndpointRequiresAuth() {
+        MockServerHttpRequest request = MockServerHttpRequest.post("/api/v1/auth/change-password").build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        filter.filter(exchange, chain).block();
+
+        assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
+        verifyNoInteractions(chain);
     }
 }

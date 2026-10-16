@@ -39,7 +39,10 @@ public class JwtUtils {
         String secret = jwtProperties.getSecretKey();
         if (secret == null || secret.isBlank() || "${JWT_SECRET}".equals(secret)) {
             // Nếu biến môi trường JWT_SECRET chưa được nạp, fallback về secret mặc định của hệ thống
+            log.warn("SECURITY WARNING: JWT_SECRET environment variable is missing or placeholder. Falling back to default development secret. DO NOT USE IN PRODUCTION!");
             secret = "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970";
+        } else if ("404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970".equals(secret.trim())) {
+            log.warn("SECURITY WARNING: Default development JWT secret key is detected. Ensure JWT_SECRET is rotated for production environments!");
         }
 
         secret = secret.trim();

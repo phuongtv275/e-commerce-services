@@ -21,7 +21,7 @@ public interface AddressRepository extends JpaRepository<Address, UUID> {
 
     Optional<Address> findByUserIdAndIsDefaultTrueAndDeletedAtIsNull(UUID userId);
 
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Transactional
     @Query("UPDATE Address a SET a.isDefault = false WHERE a.user.id = :userId")
     void clearDefaultAddresses(@Param("userId") UUID userId);

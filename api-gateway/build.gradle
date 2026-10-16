@@ -5,7 +5,7 @@ plugins {
 }
 
 group = 'com.example'
-version = '0.1.10'
+version = '0.1.11'
 description = 'api-gateway'
 
 java {

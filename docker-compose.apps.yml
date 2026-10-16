@@ -37,12 +37,19 @@ services:
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/identity_db
+      REDIS_HOST: redis-cache
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: rikkeiacademy
+      JWT_SECRET: ${JWT_SECRET}
+      GATEWAY_ASSERTION_PUBLIC_KEY: ${GATEWAY_ASSERTION_PUBLIC_KEY}
     depends_on:
       config-server:
         condition: service_healthy
       eureka-server:
         condition: service_healthy
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - ecom_backend_net
