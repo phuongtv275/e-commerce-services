@@ -1,0 +1,63 @@
+server:
+  port: 0
+
+spring:
+  application:
+    name: api-gateway
+  autoconfigure:
+    exclude:
+      - com.ecommerce.common.config.CommonLibraryAutoConfiguration
+  cloud:
+    config:
+      enabled: false
+
+eureka:
+  client:
+    enabled: false
+
+jwt:
+  secret-key: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+  whitelist-paths:
+    - /api/v1/auth/**
+    - /identity/api/v1/auth/**
+    - /api/v1/catalog/products/**
+    - /api/v1/catalog/categories/**
+    - /api/v1/catalog/brands/**
+    - /api/v1/catalog/search/**
+    - /api/v1/payments/momo/ipn
+    - /actuator/**
+
+gateway:
+  assertion:
+    private-key: |
+      -----BEGIN PRIVATE KEY-----
+      MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDPhMtrH9BWAw22
+      6C7CLkr1Ff06n8z+mhMhDyRVKjlgvZ3h6mYJBRaPOgJkeWWKPd7/XW2qmVUBqjWd
+      PwOKfOasIt/q/P8gRa5qdAfnjYwaAasdbrKyLZ82XKxiCdmOvIptL/HWVQZFQJ2+
+      2y35LSBJUiI3sfmF0sfuNqzqoMql4ie85ADRKpHgmxvMzHoHXn/F/bK3oCnO9Jkg
+      qeRzwiIzosncIzRsLDfEr9fUw/La4CP1nEbs5GOkIkqerIdpAiTHRqY7vwuRQnKQ
+      DkZ+6xjjTN6JlM18Hbno4+nJUnmsA9loGK0uWu7QZIFKmapMjQKHSQwXt6+So81Y
+      MI7/XKSbAgMBAAECggEAEXz8c5urwAPj3P02K5EhKgRfYdhjuzUa1ZdkFXVIfpmc
+      O5S4Ypw2KX3XA8ajQwIxz81813qyikBg4k6UKtCZ0/ngavpFOeAFcd0zaVUpcGuh
+      kwpoLtHfcAJhWKXB2uCSvd7jf4+MxrtKT/JCrpQZ+3PbhFwQTjHUPYQIEIHach41
+      Ji/ZOmVKgu4XI+QZ43PDalZG3LDJNfg4KgywAN5taVluXyfM1mSU8jX8zFnRUVKu
+      EYkyUBCj4H1VqlnexRIu96wRpN26g1Dl7HJsucwXCDfXms5jHhw4AyrZq8DUB8HT
+      NZxI1X6BGf0l2vRFTR6b4G6biGUs12Wpf6hEU2LlAQKBgQDqzsvBgKFqchf+Vo90
+      Y2wFLkSc1dqwd4sJE/Z3h7Top7lhLV7Z1QNq+rQSNnZf6wvkZDa7huIZh+Krt+N5
+      uPYvaKxuL+DJkPvTpqIrGeaxPy6EJYZYquPZ3QgWs/tOJjY4YgHb0b4DucIkmZ6U
+      6S62DlonO4uh3AqsuSzDTIvBgQKBgQDiP3z/GzUTlTv2S60oJY/84eZcnbJ5cgtq
+      lcT9g2qEgeg3efbsfxVc5+IjmpD8Dkg/jtXE0OXg7rivF8ETTIgt1R8v5Dhk5tsq
+      pVyp9j7Q2FD6LmG1FXyF675OWcdZ2N8+gaPAo5ujo0DkT7qwdmxMDacwjVdtftwz
+      +zgUw8U8GwKBgQCLCBmDoPtywM3OLkjQ3JG4W5YK22Ga/Z2YqXZVfkgzPiS5EplI
+      GCXm8T0wT4k18EHhYSk7TnmQLnKbxM1vZIJ4vdzjfXv3Pd6uissZBEQhjUyouGNd
+      GwrBFGxWrQlPU7blGbsKAp4lLJd0/nT0rUGYUNU2x748/8JeVWLY3PkfgQKBgCcl
+      CvBseatwt5Yuk8ANd7MuNpgxpK6Ef9sqHJIsSaKxg0cN8B4NAto3OJYmaQ1jPzbX
+      9L5/0jYvt3574qj/JdSgOiwkFWnH04W2ZKj3dPjXZHNU0QzuscPN/Pg7alVuQ3ni
+      Hj33ULdoSJL4BHoBk005U4MAAW9tcpX/0j0tfhOfAoGBAKH6ItPFZJq6and/9egm
+      ku6rkR+w5M6yoUuTeT/JjlfM6cQFixcGEvx0xATl0RKNbNm8TXIrB3MhgymflFmo
+      6zATJ3UEj3oHIwV4+1vqG9WfrZ/GuD9wocRkvmyL0GL/JCS1Zdb9k4FEqHzMX1of
+      EILjlB2kvOadbE30XUMlFpAg
+      -----END PRIVATE KEY-----
+
+cors:
+  allowed-origins: http://localhost:3000,http://localhost:8080

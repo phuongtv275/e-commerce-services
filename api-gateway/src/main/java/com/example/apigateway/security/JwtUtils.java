@@ -1,0 +1,108 @@
+package com.example.apigateway.security;
+
+import com.example.apigateway.config.JwtProperties;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.security.Keys;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+
+import javax.crypto.SecretKey;
+
+/**
+ * Utility class chịu trách nhiệm parse và validate JWT token tại Gateway layer.
+ *
+ * Lưu ý: Class này chỉ cần VERIFY (xác minh chữ ký + thời hạn),
+ * không cần generate token — đó là việc của identity-service.
+ */
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class JwtUtils {
+
+    private final JwtProperties jwtProperties;
+
+    @jakarta.annotation.PostConstruct
+    public void validateSecretOnStartup() {
+        getSignKey();
+    }
+
+    /**
+     * Tạo SecretKey từ cấu hình (hỗ trợ cả Base64 và UTF-8 raw string >= 256 bits).
+     * Phải dùng cùng thuật toán (HMAC-SHA256) với identity-service.
+     */
+    private SecretKey getSignKey() {
+        String secret = jwtProperties.getSecretKey();
+        if (secret == null || secret.isBlank()) {
+            throw new IllegalArgumentException("JWT secret key must not be empty");
+        }
+
+        secret = secret.trim();
+        byte[] keyBytes;
+
+        if (secret.startsWith("raw:")) {
+            keyBytes = secret.substring(4).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        } else if (secret.startsWith("base64:")) {
+            keyBytes = Decoders.BASE64.decode(secret.substring(7).trim());
+        } else if ("raw".equalsIgnoreCase(jwtProperties.getSecretFormat())) {
+            keyBytes = secret.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        } else {
+            // Mode "base64" (mặc định): bắt buộc giải mã Base64 hợp lệ, ném exception nếu format sai
+            keyBytes = Decoders.BASE64.decode(secret);
+        }
+
+        if (keyBytes.length < 32) {
+            throw new IllegalArgumentException("JWT secret key must provide at least 256 bits (32 bytes) of key material");
+        }
+
+        return Keys.hmacShaKeyFor(keyBytes);
+    }
+
+    /**
+     * Parse JWT và trả về Claims nếu token hợp lệ.
+     *
+     * Ném các exception tương ứng nếu token không hợp lệ:
+     * - {@link ExpiredJwtException}   : token hết hạn
+     * - {@link JwtException}          : chữ ký sai, token bị tamper hoặc sai format
+     * - {@link IllegalArgumentException}: token null/rỗng
+     *
+     * @param token chuỗi JWT (không bao gồm tiền tố "Bearer ")
+     * @return Claims chứa thông tin payload của token
+     */
+    public Claims parseToken(String token) {
+        return Jwts.parser()
+                .verifyWith(getSignKey())
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+    }
+
+    /**
+     * Trích xuất claim jti (JWT ID) từ token.
+     *
+     * @param token chuỗi JWT
+     * @return jti của token
+     */
+    public String extractJti(String token) {
+        Claims claims = parseToken(token);
+        return claims != null ? claims.getId() : null;
+    }
+
+    /**
+     * Kiểm tra nhanh token có hợp lệ không (không throw exception ra ngoài).
+     * Dùng để log thêm thông tin, còn filter vẫn handle exception trực tiếp.
+     */
+    public boolean isTokenValid(String token) {
+        try {
+            parseToken(token);
+            return true;
+        } catch (Exception ex) {
+            log.debug("Token validation failed: {}", ex.getMessage());
+            return false;
+        }
+    }
+}

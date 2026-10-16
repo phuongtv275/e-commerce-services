@@ -1,1 +1,6 @@
 rootProject.name = 'api-gateway'
+
+if (file('../common-library').exists()) {
+    include ':common-library'
+    project(':common-library').projectDir = file('../common-library')
+}

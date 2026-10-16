@@ -12,6 +12,11 @@ services:
     environment:
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
+      REDIS_HOST: redis-cache
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: rikkeiacademy
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      GATEWAY_ASSERTION_PRIVATE_KEY: ${GATEWAY_ASSERTION_PRIVATE_KEY}
     depends_on:
       config-server:
         condition: service_healthy
@@ -28,8 +33,6 @@ services:
       dockerfile: identity-service/Dockerfile
     container_name: ecom-identity-service
     restart: always
-    ports:
-      - "8081:8081"
     environment:
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
@@ -51,8 +54,6 @@ services:
       dockerfile: catalog-service/Dockerfile
     container_name: ecom-catalog-service
     restart: always
-    ports:
-      - "8082:8082"
     environment:
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
@@ -74,8 +75,6 @@ services:
       dockerfile: inventory-service/Dockerfile
     container_name: ecom-inventory-service
     restart: always
-    ports:
-      - "8083:8083"
     environment:
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
@@ -97,8 +96,6 @@ services:
       dockerfile: order-service/Dockerfile
     container_name: ecom-order-service
     restart: always
-    ports:
-      - "8084:8084"
     environment:
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
@@ -120,8 +117,6 @@ services:
       dockerfile: payment-service/Dockerfile
     container_name: ecom-payment-service
     restart: always
-    ports:
-      - "8085:8085"
     environment:
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
@@ -143,8 +138,6 @@ services:
       dockerfile: notification-service/Dockerfile
     container_name: ecom-notification-service
     restart: always
-    ports:
-      - "8086:8086"
     environment:
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
