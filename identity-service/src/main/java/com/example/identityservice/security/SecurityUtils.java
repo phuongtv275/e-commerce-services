@@ -19,11 +19,23 @@ public final class SecurityUtils {
         if (principal instanceof MyUserDetails myUserDetails && myUserDetails.getUser() != null) {
             return myUserDetails.getUser().getId();
         }
+        if (principal instanceof org.springframework.security.core.userdetails.UserDetails userDetails) {
+            try {
+                return UUID.fromString(userDetails.getUsername());
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
         if (principal instanceof String principalStr) {
             try {
                 return UUID.fromString(principalStr);
             } catch (IllegalArgumentException e) {
                 return null;
+            }
+        }
+        if (auth.getName() != null) {
+            try {
+                return UUID.fromString(auth.getName());
+            } catch (IllegalArgumentException ignored) {
             }
         }
         return null;

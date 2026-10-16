@@ -1,5 +1,6 @@
 package com.example.identityservice.models.dto.res;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 
 import java.time.Instant;
@@ -15,6 +16,12 @@ public record AddressRes(
         String district,
         String city,
         String country,
+        @JsonProperty("default")
         boolean isDefault,
         Instant createdAt
-) {}
+) {
+    @JsonProperty("isDefault")
+    public boolean getIsDefault() {
+        return isDefault;
+    }
+}
