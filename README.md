@@ -3,7 +3,7 @@
 Backend Microservices platform for multi-channel e-commerce system built with Spring Boot, Spring Cloud, Gradle, and Docker.
 
 - **Artifact Name:** `e-commerce-services`
-- **Version:** `0.1.0` (Semantic Versioning)
+- **Version:** `0.1.1` (Semantic Versioning)
 - **External Config Repository:** `../e-commerce-services-config`
 
 ---
@@ -12,6 +12,7 @@ Backend Microservices platform for multi-channel e-commerce system built with Sp
 
 | Service | Port | Description | Technology Stack |
 | :--- | :---: | :--- | :--- |
+| **common-library** | N/A | Shared Library: API Response, Global Exception, Tracing & Zero-Trust Filters, Transactional Outbox, Event Contracts, Idempotency | Plain Java Library (`java-library`), Java 21, Spring Boot BOM |
 | **api-gateway** | `8080` | Edge Gateway, Routing, Rate Limiting | Spring Cloud Gateway (WebFlux), Eureka Client |
 | **identity-service** | `8081` | Authentication, Authorization, Users | Spring Boot WebMVC, PostgreSQL (`identity_db`) |
 | **catalog-service** | `8082` | Products, Categories, Search | Spring Boot WebMVC, PostgreSQL (`catalog_db`), Elasticsearch |
@@ -53,6 +54,7 @@ e-commerce-services/
 ├── .circleci/config.yml              # Automated CI Pipeline
 ├── .env.example                      # Environment variables template
 ├── docker/postgres/init-databases.sql# Script initializing 6 databases
+├── common-library/                   # Shared Library (API format, filters, outbox, events, idempotency)
 ├── config-server/                    # Spring Cloud Config Server (Port 8888)
 ├── eureka-server/                    # Eureka Discovery Server (Port 8761)
 ├── api-gateway/                      # Spring Cloud Gateway (Port 8080)
