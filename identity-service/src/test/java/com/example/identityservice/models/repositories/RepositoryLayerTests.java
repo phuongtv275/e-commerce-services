@@ -18,6 +18,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
+@org.springframework.boot.persistence.autoconfigure.EntityScan(basePackages = {"com.example.identityservice.models.entities", "com.ecommerce.common.outbox"})
 @TestPropertySource(properties = {
         "spring.flyway.enabled=false",
         "spring.jpa.hibernate.ddl-auto=create-drop"

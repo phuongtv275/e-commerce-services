@@ -6,9 +6,7 @@ import com.example.identityservice.models.constants.UserStatus;
 import com.example.identityservice.models.dto.req.AssignRoleReq;
 import com.example.identityservice.models.entities.Role;
 import com.example.identityservice.models.entities.User;
-import com.example.identityservice.models.repositories.AuditLogRepository;
-import com.example.identityservice.models.repositories.RoleRepository;
-import com.example.identityservice.models.repositories.UserRepository;
+import com.example.identityservice.models.repositories.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -54,6 +52,15 @@ class AdminControllerTests {
     private AuditLogRepository auditLogRepository;
 
     @Autowired
+    private AddressRepository addressRepository;
+
+    @Autowired
+    private RefreshTokenRepository refreshTokenRepository;
+
+    @Autowired
+    private PasswordResetRepository passwordResetRepository;
+
+    @Autowired
     private PasswordEncoder passwordEncoder;
 
     private User adminUser;
@@ -65,6 +72,9 @@ class AdminControllerTests {
     @BeforeEach
     void setUp() {
         auditLogRepository.deleteAll();
+        addressRepository.deleteAll();
+        refreshTokenRepository.deleteAll();
+        passwordResetRepository.deleteAll();
         userRepository.deleteAll();
         roleRepository.deleteAll();
 

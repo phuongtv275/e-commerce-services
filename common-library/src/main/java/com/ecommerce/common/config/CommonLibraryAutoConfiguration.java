@@ -51,6 +51,17 @@ public class CommonLibraryAutoConfiguration {
         @Override
         public void registerBeanDefinitions(AnnotationMetadata importingClassMetadata, BeanDefinitionRegistry registry) {
             AutoConfigurationPackages.register(registry, "com.ecommerce.common");
+            try {
+                Class<?> espClz;
+                try {
+                    espClz = Class.forName("org.springframework.boot.persistence.autoconfigure.EntityScanPackages");
+                } catch (ClassNotFoundException e) {
+                    espClz = Class.forName("org.springframework.boot.autoconfigure.domain.EntityScanPackages");
+                }
+                var registerMethod = espClz.getMethod("register", BeanDefinitionRegistry.class, String[].class);
+                registerMethod.invoke(null, registry, new String[]{"com.ecommerce.common"});
+            } catch (Exception ignored) {
+            }
         }
     }
 
