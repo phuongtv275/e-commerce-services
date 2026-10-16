@@ -42,7 +42,7 @@ public class AuditLog {
     private String targetId;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(columnDefinition = "jsonb")
+    @Column(name = "delta")
     private String delta;
 
     @Column(name = "ip_address", length = 50)
