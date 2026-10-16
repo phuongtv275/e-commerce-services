@@ -198,4 +198,55 @@ class AddressControllerTests {
         User updatedUser = userRepository.findById(userA.getId()).orElseThrow();
         assertThat(updatedUser.getFullName()).isEqualTo("User A Updated");
     }
+
+    @Test
+    @DisplayName("POS-11: Set default address and update address to default cleanly rotates default status")
+    void testSetDefaultAddressAndRotate() throws Exception {
+        // Address 1 (Default)
+        Address addr1 = addressRepository.save(Address.builder()
+                .user(userA)
+                .recipientName("Address 1")
+                .phone("0912345678")
+                .addressLine1("111 First Ave")
+                .city("Hanoi")
+                .country("Vietnam")
+                .isDefault(true)
+                .build());
+
+        // Address 2 (Non-default)
+        Address addr2 = addressRepository.save(Address.builder()
+                .user(userA)
+                .recipientName("Address 2")
+                .phone("0912345678")
+                .addressLine1("222 Second Ave")
+                .city("Hanoi")
+                .country("Vietnam")
+                .isDefault(false)
+                .build());
+
+        // 1. PATCH /api/v1/users/me/addresses/{addr2}/default
+        mockMvc.perform(patch("/api/v1/users/me/addresses/" + addr2.getId() + "/default")
+                        .with(user(userA.getId().toString())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.default").value(true));
+
+        Address updatedAddr1 = addressRepository.findById(addr1.getId()).orElseThrow();
+        Address updatedAddr2 = addressRepository.findById(addr2.getId()).orElseThrow();
+        assertThat(updatedAddr2.isDefault()).isTrue();
+        assertThat(updatedAddr1.isDefault()).isFalse();
+
+        // 2. PUT /api/v1/users/me/addresses/{addr1} with isDefault = true
+        AddressReq req = new AddressReq("Address 1 Updated", "0912345678", "111 First Ave New", null, "Dist 1", "Hanoi", "Vietnam", true);
+        mockMvc.perform(put("/api/v1/users/me/addresses/" + addr1.getId())
+                        .with(user(userA.getId().toString()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.default").value(true));
+
+        updatedAddr1 = addressRepository.findById(addr1.getId()).orElseThrow();
+        updatedAddr2 = addressRepository.findById(addr2.getId()).orElseThrow();
+        assertThat(updatedAddr1.isDefault()).isTrue();
+        assertThat(updatedAddr2.isDefault()).isFalse();
+    }
 }

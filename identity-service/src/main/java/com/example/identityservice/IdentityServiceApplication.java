@@ -20,16 +20,49 @@ public class IdentityServiceApplication {
     }
 
     @Bean
-    public ApplicationRunner adminBootstrapSecurityCheck(UserRepository userRepository) {
+    public ApplicationRunner securityConfigurationValidator(
+            org.springframework.core.env.Environment environment,
+            UserRepository userRepository,
+            @org.springframework.beans.factory.annotation.Value("${app.jwt.secret:}") String jwtSecret,
+            @org.springframework.beans.factory.annotation.Value("${security.gateway-assertion.public-key:}") String gatewayAssertionPublicKey,
+            @org.springframework.beans.factory.annotation.Value("${security.internal-service-keys.order-service:}") String orderKey,
+            @org.springframework.beans.factory.annotation.Value("${security.internal-service-keys.notification-service:}") String notifKey
+    ) {
         return args -> {
-            try {
+            boolean isProd = environment.matchesProfiles("prod", "production");
+            String defaultDevSecret = "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970";
+            String defaultOrderKey = "order-service-secret-key-32chars";
+            String defaultNotifKey = "notification-service-secret-key-32c";
+            String defaultAdminHash = "$2a$12$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
+
+            if (isProd) {
+                if (jwtSecret == null || jwtSecret.isBlank() || defaultDevSecret.equals(jwtSecret.trim())) {
+                    throw new IllegalStateException("CRITICAL SECURITY ERROR: In production profile, JWT_SECRET must be securely provided via environment variable and cannot use the development fallback key!");
+                }
+                if (gatewayAssertionPublicKey == null || gatewayAssertionPublicKey.isBlank()) {
+                    throw new IllegalStateException("CRITICAL SECURITY ERROR: In production profile, GATEWAY_ASSERTION_PUBLIC_KEY must be provided via environment variable!");
+                }
+                if (orderKey == null || defaultOrderKey.equals(orderKey.trim()) || notifKey == null || defaultNotifKey.equals(notifKey.trim())) {
+                    throw new IllegalStateException("CRITICAL SECURITY ERROR: In production profile, internal service keys must be securely configured with non-default secrets!");
+                }
                 userRepository.findByEmailAndDeletedAtIsNull("admin@ecom.local").ifPresent(admin -> {
-                    if ("$2a$12$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy".equals(admin.getPasswordHash())) {
-                        log.warn("SECURITY WARNING: Default development password for 'admin@ecom.local' is active. Please change this administrative password before production deployment!");
+                    if (defaultAdminHash.equals(admin.getPasswordHash())) {
+                        throw new IllegalStateException("CRITICAL SECURITY ERROR: Default development password for 'admin@ecom.local' is detected in production. Admin password must be rotated before deploying!");
                     }
                 });
-            } catch (Exception e) {
-                log.debug("Skipping admin security check: {}", e.getMessage());
+            } else {
+                if (jwtSecret != null && defaultDevSecret.equals(jwtSecret.trim())) {
+                    log.warn("SECURITY WARNING: Using default development HMAC secret key. Ensure JWT_SECRET is overridden in production!");
+                }
+                try {
+                    userRepository.findByEmailAndDeletedAtIsNull("admin@ecom.local").ifPresent(admin -> {
+                        if (defaultAdminHash.equals(admin.getPasswordHash())) {
+                            log.warn("SECURITY WARNING: Default development password for 'admin@ecom.local' is active. Please change this administrative password before production deployment!");
+                        }
+                    });
+                } catch (Exception e) {
+                    log.debug("Skipping admin development security check: {}", e.getMessage());
+                }
             }
         };
     }

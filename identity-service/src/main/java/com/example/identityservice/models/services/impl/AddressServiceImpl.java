@@ -64,6 +64,7 @@ public class AddressServiceImpl implements AddressService {
     public AddressRes createAddress(UUID userId, AddressReq req) {
         User user = userRepository.findByIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
+        String userEmail = user.getEmail();
 
         boolean isDefault = Boolean.TRUE.equals(req.isDefault());
         List<Address> existing = addressRepository.findAllByUserIdAndDeletedAtIsNull(userId);
@@ -73,6 +74,9 @@ public class AddressServiceImpl implements AddressService {
 
         if (isDefault) {
             addressRepository.clearDefaultAddresses(userId);
+            // Re-fetch managed user after persistence context was cleared
+            user = userRepository.findByIdAndDeletedAtIsNull(userId)
+                    .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
         }
 
         Address address = Address.builder()
@@ -91,7 +95,7 @@ public class AddressServiceImpl implements AddressService {
 
         auditLogService.logAction(
                 userId,
-                user.getEmail(),
+                userEmail,
                 "CREATE_ADDRESS",
                 "ADDRESS",
                 saved.getId().toString(),
@@ -109,8 +113,13 @@ public class AddressServiceImpl implements AddressService {
         Address address = addressRepository.findByIdAndUserIdAndDeletedAtIsNull(addressId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Address not found with id: " + addressId));
 
+        String userEmail = (address.getUser() != null) ? address.getUser().getEmail() : null;
+
         if (Boolean.TRUE.equals(req.isDefault())) {
             addressRepository.clearDefaultAddresses(userId);
+            // Re-fetch managed address after persistence context was cleared
+            address = addressRepository.findByIdAndUserIdAndDeletedAtIsNull(addressId, userId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Address not found with id: " + addressId));
             address.setDefault(true);
         } else if (req.isDefault() != null) {
             address.setDefault(req.isDefault());
@@ -142,7 +151,7 @@ public class AddressServiceImpl implements AddressService {
 
         auditLogService.logAction(
                 userId,
-                address.getUser().getEmail(),
+                userEmail,
                 "UPDATE_ADDRESS",
                 "ADDRESS",
                 addressId.toString(),
@@ -160,12 +169,14 @@ public class AddressServiceImpl implements AddressService {
         Address address = addressRepository.findByIdAndUserIdAndDeletedAtIsNull(addressId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Address not found with id: " + addressId));
 
+        String userEmail = (address.getUser() != null) ? address.getUser().getEmail() : null;
+
         address.setDeletedAt(Instant.now());
         addressRepository.save(address);
 
         auditLogService.logAction(
                 userId,
-                address.getUser().getEmail(),
+                userEmail,
                 "DELETE_ADDRESS",
                 "ADDRESS",
                 addressId.toString(),
@@ -181,13 +192,18 @@ public class AddressServiceImpl implements AddressService {
         Address address = addressRepository.findByIdAndUserIdAndDeletedAtIsNull(addressId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Address not found with id: " + addressId));
 
+        String userEmail = (address.getUser() != null) ? address.getUser().getEmail() : null;
+
         addressRepository.clearDefaultAddresses(userId);
+        // Re-fetch managed address after persistence context was cleared
+        address = addressRepository.findByIdAndUserIdAndDeletedAtIsNull(addressId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Address not found with id: " + addressId));
         address.setDefault(true);
         Address saved = addressRepository.save(address);
 
         auditLogService.logAction(
                 userId,
-                address.getUser().getEmail(),
+                userEmail,
                 "SET_DEFAULT_ADDRESS",
                 "ADDRESS",
                 addressId.toString(),

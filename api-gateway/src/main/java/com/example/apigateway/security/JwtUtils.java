@@ -21,10 +21,20 @@ import javax.crypto.SecretKey;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class JwtUtils {
 
     private final JwtProperties jwtProperties;
+    private final org.springframework.core.env.Environment environment;
+
+    public JwtUtils(JwtProperties jwtProperties) {
+        this(jwtProperties, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public JwtUtils(JwtProperties jwtProperties, @org.springframework.beans.factory.annotation.Autowired(required = false) org.springframework.core.env.Environment environment) {
+        this.jwtProperties = jwtProperties;
+        this.environment = environment;
+    }
 
     @jakarta.annotation.PostConstruct
     public void validateSecretOnStartup() {
@@ -37,11 +47,18 @@ public class JwtUtils {
      */
     private SecretKey getSignKey() {
         String secret = jwtProperties.getSecretKey();
+        boolean isProd = environment != null && environment.matchesProfiles("prod", "production");
+
         if (secret == null || secret.isBlank() || "${JWT_SECRET}".equals(secret)) {
-            // Nếu biến môi trường JWT_SECRET chưa được nạp, fallback về secret mặc định của hệ thống
+            if (isProd) {
+                throw new IllegalStateException("CRITICAL SECURITY ERROR: In production profile, JWT_SECRET must be securely provided via environment variable!");
+            }
             log.warn("SECURITY WARNING: JWT_SECRET environment variable is missing or placeholder. Falling back to default development secret. DO NOT USE IN PRODUCTION!");
             secret = "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970";
         } else if ("404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970".equals(secret.trim())) {
+            if (isProd) {
+                throw new IllegalStateException("CRITICAL SECURITY ERROR: Default development JWT secret key detected in production profile!");
+            }
             log.warn("SECURITY WARNING: Default development JWT secret key is detected. Ensure JWT_SECRET is rotated for production environments!");
         }
 

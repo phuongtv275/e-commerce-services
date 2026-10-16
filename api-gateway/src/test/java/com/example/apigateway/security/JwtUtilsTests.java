@@ -155,4 +155,17 @@ class JwtUtilsTests {
 
         assertEquals("base64url-user", jwtUtils.parseToken(token).getSubject());
     }
+
+    @Test
+    @DisplayName("In production profile, fallback secret throws IllegalStateException")
+    void testProductionProfileRejectsFallbackSecret() {
+        org.springframework.mock.env.MockEnvironment env = new org.springframework.mock.env.MockEnvironment();
+        env.setActiveProfiles("prod");
+
+        JwtProperties properties = new JwtProperties();
+        properties.setSecretKey(null);
+        JwtUtils jwtUtils = new JwtUtils(properties, env);
+
+        assertThrows(IllegalStateException.class, jwtUtils::validateSecretOnStartup);
+    }
 }

@@ -27,14 +27,25 @@ public class GatewayAssertionSigner {
 
     private final PrivateKey privateKey;
 
-    public GatewayAssertionSigner(@Value("${gateway.assertion.private-key:}") String privateKeyPem) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public GatewayAssertionSigner(
+            @Value("${gateway.assertion.private-key:}") String privateKeyPem,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) org.springframework.core.env.Environment environment) {
+        boolean isProd = environment != null && environment.matchesProfiles("prod", "production");
         if (privateKeyPem != null && privateKeyPem.contains("MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDPhMtrH9BWAw22")) {
+            if (isProd) {
+                throw new IllegalStateException("CRITICAL SECURITY ERROR: In production profile, GATEWAY_ASSERTION_PRIVATE_KEY must not use the default development key!");
+            }
             log.warn("SECURITY WARNING: Gateway assertion is using the default development RSA private key. Ensure GATEWAY_ASSERTION_PRIVATE_KEY is securely configured in production!");
         }
         this.privateKey = parsePrivateKey(privateKeyPem);
         if (this.privateKey == null) {
             throw new IllegalStateException("GATEWAY_ASSERTION_PRIVATE_KEY is missing or invalid. Gateway requires a valid RSA-2048 private key to sign identity assertions.");
         }
+    }
+
+    public GatewayAssertionSigner(String privateKeyPem) {
+        this(privateKeyPem, null);
     }
 
     /**
