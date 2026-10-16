@@ -71,6 +71,8 @@ public class GatewayAssertionSigner {
                     .replace("-----END PRIVATE KEY-----", "")
                     .replace("-----BEGIN RSA PRIVATE KEY-----", "")
                     .replace("-----END RSA PRIVATE KEY-----", "")
+                    .replace("\\n", "")
+                    .replace("\\r", "")
                     .replaceAll("\\s+", "");
 
             byte[] keyBytes = Base64.getDecoder().decode(cleanKey);

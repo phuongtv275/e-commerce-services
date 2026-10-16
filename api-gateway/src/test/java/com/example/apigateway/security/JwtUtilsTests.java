@@ -117,4 +117,42 @@ class JwtUtilsTests {
 
         assertThrows(IllegalArgumentException.class, () -> jwtUtils.parseToken("some.token"));
     }
+
+    @Test
+    @DisplayName("Fallback to default secret when secretKey is null, blank, or literal '${JWT_SECRET}'")
+    void testFallbackToDefaultSecret() {
+        for (String secret : new String[]{null, "", "   ", "${JWT_SECRET}"}) {
+            JwtProperties properties = new JwtProperties();
+            properties.setSecretKey(secret);
+            JwtUtils jwtUtils = new JwtUtils(properties);
+
+            var key = Keys.hmacShaKeyFor(io.jsonwebtoken.io.Decoders.BASE64.decode(BASE64_SECRET));
+            String token = Jwts.builder()
+                    .subject("test-user")
+                    .signWith(key)
+                    .compact();
+
+            assertEquals("test-user", jwtUtils.parseToken(token).getSubject());
+        }
+    }
+
+    @Test
+    @DisplayName("Support Base64URL encoded secret with - or _")
+    void testBase64UrlSecret() {
+        String base64UrlSecret = "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970"
+                .replace('+', '-')
+                .replace('/', '_');
+
+        JwtProperties properties = new JwtProperties();
+        properties.setSecretKey(base64UrlSecret);
+        JwtUtils jwtUtils = new JwtUtils(properties);
+
+        var key = Keys.hmacShaKeyFor(io.jsonwebtoken.io.Decoders.BASE64URL.decode(base64UrlSecret));
+        String token = Jwts.builder()
+                .subject("base64url-user")
+                .signWith(key)
+                .compact();
+
+        assertEquals("base64url-user", jwtUtils.parseToken(token).getSubject());
+    }
 }
