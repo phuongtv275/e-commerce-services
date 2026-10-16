@@ -24,6 +24,10 @@ public interface UserRepository extends JpaRepository<User, UUID>, JpaSpecificat
 
     Optional<User> findByIdAndDeletedAtIsNull(UUID id);
 
+    @EntityGraph(attributePaths = {"roles"})
+    @Query("SELECT u FROM User u WHERE u.id = :id AND u.deletedAt IS NULL")
+    Optional<User> findWithRolesById(@Param("id") UUID id);
+
     Optional<User> findByVerificationTokenHashAndDeletedAtIsNull(String verificationTokenHash);
 
     default Optional<User> findByUsername(String username) {

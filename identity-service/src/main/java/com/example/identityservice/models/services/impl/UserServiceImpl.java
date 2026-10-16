@@ -87,4 +87,25 @@ public class UserServiceImpl implements UserService {
                 .createdAt(saved.getCreatedAt())
                 .build();
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public com.example.identityservice.models.dto.res.InternalUserRes getInternalUser(UUID userId) {
+        User user = userRepository.findWithRolesById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
+
+        List<String> roles = user.getRoles() != null
+                ? user.getRoles().stream().map(r -> r.getRoleName().name()).toList()
+                : List.of();
+
+        return com.example.identityservice.models.dto.res.InternalUserRes.builder()
+                .id(user.getId())
+                .email(user.getEmail())
+                .fullName(user.getFullName())
+                .phoneNumber(user.getPhoneNumber())
+                .status(user.getStatus())
+                .emailVerified(user.isEmailVerified())
+                .roles(roles)
+                .build();
+    }
 }
