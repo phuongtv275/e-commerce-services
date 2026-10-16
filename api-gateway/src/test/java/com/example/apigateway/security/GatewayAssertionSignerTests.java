@@ -62,10 +62,10 @@ class GatewayAssertionSignerTests {
     }
 
     @Test
-    @DisplayName("Should return null or fallback safely if private key is not configured")
-    void shouldHandleMissingPrivateKeySafely() {
-        GatewayAssertionSigner unconfiguredSigner = new GatewayAssertionSigner("");
-        String token = unconfiguredSigner.signAssertion("user-1", List.of("ROLE_USER"), "catalog-service");
-        assertNull(token);
+    @DisplayName("Should throw IllegalStateException on startup if private key is missing or invalid")
+    void shouldThrowExceptionOnMissingOrInvalidPrivateKey() {
+        assertThrows(IllegalStateException.class, () -> new GatewayAssertionSigner(""));
+        assertThrows(IllegalStateException.class, () -> new GatewayAssertionSigner(null));
+        assertThrows(IllegalStateException.class, () -> new GatewayAssertionSigner("not-a-valid-key"));
     }
 }

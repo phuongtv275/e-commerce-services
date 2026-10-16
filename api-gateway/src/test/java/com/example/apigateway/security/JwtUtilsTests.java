@@ -73,4 +73,37 @@ class JwtUtilsTests {
 
         assertFalse(jwtUtils.isTokenValid("invalid.jwt.token"));
     }
+
+    @Test
+    @DisplayName("parseToken with explicit raw: and base64: prefixes")
+    void testParseTokenWithExplicitPrefixes() {
+        JwtProperties rawProps = new JwtProperties();
+        rawProps.setSecretKey("raw:" + RAW_STRING_SECRET);
+        JwtUtils rawUtils = new JwtUtils(rawProps);
+
+        var key = Keys.hmacShaKeyFor(RAW_STRING_SECRET.getBytes(StandardCharsets.UTF_8));
+        String token = Jwts.builder()
+                .subject("carol")
+                .signWith(key)
+                .compact();
+
+        assertEquals("carol", rawUtils.parseToken(token).getSubject());
+
+        JwtProperties b64Props = new JwtProperties();
+        b64Props.setSecretKey("base64:" + BASE64_SECRET);
+        JwtUtils b64Utils = new JwtUtils(b64Props);
+        var b64Key = Keys.hmacShaKeyFor(io.jsonwebtoken.io.Decoders.BASE64.decode(BASE64_SECRET));
+        String b64Token = Jwts.builder().subject("dave").signWith(b64Key).compact();
+        assertEquals("dave", b64Utils.parseToken(b64Token).getSubject());
+    }
+
+    @Test
+    @DisplayName("Secret key shorter than 32 bytes should throw IllegalArgumentException")
+    void testShortSecretKeyThrowsException() {
+        JwtProperties properties = new JwtProperties();
+        properties.setSecretKey("raw:too-short");
+        JwtUtils jwtUtils = new JwtUtils(properties);
+
+        assertThrows(IllegalArgumentException.class, () -> jwtUtils.parseToken("some.token"));
+    }
 }

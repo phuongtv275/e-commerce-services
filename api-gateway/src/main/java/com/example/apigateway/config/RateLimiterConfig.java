@@ -29,7 +29,9 @@ public class RateLimiterConfig {
     public KeyResolver ipKeyResolver() {
         return exchange -> {
             if (Boolean.TRUE.equals(exchange.getAttribute("RATE_LIMITER_BYPASS"))) {
-                return Mono.just("bypass:" + java.util.UUID.randomUUID());
+                // Trả về Mono.empty() kết hợp deny-empty-key=false để Gateway bỏ qua hoàn toàn RateLimiter,
+                // không gửi lệnh đến Redis và không sinh rác key bucket trong đợt load test.
+                return Mono.empty();
             }
             String clientIp = Optional.ofNullable(exchange.getRequest().getHeaders().getFirst("X-Forwarded-For"))
                     .map(ips -> ips.split(",")[0].trim())
@@ -48,7 +50,7 @@ public class RateLimiterConfig {
     public KeyResolver userKeyResolver() {
         return exchange -> {
             if (Boolean.TRUE.equals(exchange.getAttribute("RATE_LIMITER_BYPASS"))) {
-                return Mono.just("bypass:" + java.util.UUID.randomUUID());
+                return Mono.empty();
             }
             String userId = exchange.getRequest().getHeaders().getFirst("X-User-Id");
             if (StringUtils.hasText(userId)) {

@@ -35,15 +35,28 @@ public class JwtUtils {
         if (secret == null || secret.isBlank()) {
             throw new IllegalArgumentException("JWT secret key must not be empty");
         }
+
+        secret = secret.trim();
         byte[] keyBytes;
-        try {
-            keyBytes = Decoders.BASE64.decode(secret.trim());
-            if (keyBytes.length < 32) {
+
+        if (secret.startsWith("raw:")) {
+            keyBytes = secret.substring(4).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        } else if (secret.startsWith("base64:")) {
+            keyBytes = Decoders.BASE64.decode(secret.substring(7).trim());
+        } else if ("raw".equalsIgnoreCase(jwtProperties.getSecretFormat())) {
+            keyBytes = secret.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        } else {
+            try {
+                keyBytes = Decoders.BASE64.decode(secret);
+            } catch (Exception ex) {
                 keyBytes = secret.getBytes(java.nio.charset.StandardCharsets.UTF_8);
             }
-        } catch (Exception ex) {
-            keyBytes = secret.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         }
+
+        if (keyBytes.length < 32) {
+            throw new IllegalArgumentException("JWT secret key must provide at least 256 bits (32 bytes) of key material");
+        }
+
         return Keys.hmacShaKeyFor(keyBytes);
     }
 

@@ -30,7 +30,7 @@ public class GatewayAssertionSigner {
     public GatewayAssertionSigner(@Value("${gateway.assertion.private-key:}") String privateKeyPem) {
         this.privateKey = parsePrivateKey(privateKeyPem);
         if (this.privateKey == null) {
-            log.warn("GATEWAY_ASSERTION_PRIVATE_KEY is not configured or invalid. Assertion signing will be disabled.");
+            throw new IllegalStateException("GATEWAY_ASSERTION_PRIVATE_KEY is missing or invalid. Gateway requires a valid RSA-2048 private key to sign identity assertions.");
         }
     }
 

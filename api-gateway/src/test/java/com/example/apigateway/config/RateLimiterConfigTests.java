@@ -63,7 +63,7 @@ class RateLimiterConfigTests {
     }
 
     @Test
-    @DisplayName("KeyResolvers should return bypass key when RATE_LIMITER_BYPASS attribute is set")
+    @DisplayName("KeyResolvers should return Mono.empty() to bypass rate limiting without Redis key churn")
     void keyResolversShouldBypassWhenAttributeIsSet() {
         MockServerHttpRequest request = MockServerHttpRequest.get("/api/v1/catalog/products")
                 .remoteAddress(new InetSocketAddress("10.0.0.5", 40000))
@@ -74,9 +74,7 @@ class RateLimiterConfigTests {
         String ipKey = config.ipKeyResolver().resolve(exchange).block();
         String userKey = config.userKeyResolver().resolve(exchange).block();
 
-        assertNotNull(ipKey);
-        assertNotNull(userKey);
-        org.junit.jupiter.api.Assertions.assertTrue(ipKey.startsWith("bypass:"));
-        org.junit.jupiter.api.Assertions.assertTrue(userKey.startsWith("bypass:"));
+        org.junit.jupiter.api.Assertions.assertNull(ipKey);
+        org.junit.jupiter.api.Assertions.assertNull(userKey);
     }
 }

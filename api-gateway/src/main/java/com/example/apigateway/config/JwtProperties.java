@@ -17,8 +17,14 @@ import java.util.List;
 @ConfigurationProperties(prefix = "jwt")
 public class JwtProperties {
 
-    /** Secret key (hex-encoded) dùng để verify chữ ký JWT — phải giống với identity-service */
+    /** Secret key (hex/base64-encoded hoặc raw string) dùng để verify chữ ký JWT — phải giống với identity-service */
     private String secretKey;
+
+    /**
+     * Định dạng của secret key: "base64" (mặc định) hoặc "raw".
+     * Hỗ trợ chỉ định rõ ràng qua cấu hình hoặc prefix "raw:" / "base64:".
+     */
+    private String secretFormat = "base64";
 
     /**
      * Danh sách các path pattern (AntPath) được bỏ qua kiểm tra JWT.
