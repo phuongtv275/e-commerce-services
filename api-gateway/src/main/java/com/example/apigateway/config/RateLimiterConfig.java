@@ -33,10 +33,11 @@ public class RateLimiterConfig {
                 // không gửi lệnh đến Redis và không sinh rác key bucket trong đợt load test.
                 return Mono.empty();
             }
-            String clientIp = Optional.ofNullable(exchange.getRequest().getHeaders().getFirst("X-Forwarded-For"))
-                    .map(ips -> ips.split(",")[0].trim())
-                    .orElseGet(() -> Optional.ofNullable(exchange.getRequest().getRemoteAddress())
-                            .map(addr -> addr.getAddress().getHostAddress())
+            // Ưu tiên RemoteAddress từ kết nối TCP socket trực tiếp để chống giả mạo IP qua header X-Forwarded-For
+            String clientIp = Optional.ofNullable(exchange.getRequest().getRemoteAddress())
+                    .map(addr -> addr.getAddress().getHostAddress())
+                    .orElseGet(() -> Optional.ofNullable(exchange.getRequest().getHeaders().getFirst("X-Forwarded-For"))
+                            .map(ips -> ips.split(",")[0].trim())
                             .orElse("unknown-ip"));
             return Mono.just(clientIp);
         };

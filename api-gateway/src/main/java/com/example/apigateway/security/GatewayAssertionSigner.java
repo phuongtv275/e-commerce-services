@@ -76,7 +76,13 @@ public class GatewayAssertionSigner {
             byte[] keyBytes = Base64.getDecoder().decode(cleanKey);
             PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(keyBytes);
             KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-            return keyFactory.generatePrivate(spec);
+            PrivateKey privateKey = keyFactory.generatePrivate(spec);
+            if (privateKey instanceof java.security.interfaces.RSAPrivateKey rsaKey) {
+                if (rsaKey.getModulus().bitLength() < 2048) {
+                    throw new IllegalArgumentException("Gateway assertion RSA key must be at least 2048 bits, but was " + rsaKey.getModulus().bitLength() + " bits");
+                }
+            }
+            return privateKey;
         } catch (Exception e) {
             log.error("Failed to parse RSA Private Key for gateway assertion: {}", e.getMessage());
             return null;

@@ -15,8 +15,21 @@ class RateLimiterConfigTests {
     private final RateLimiterConfig config = new RateLimiterConfig();
 
     @Test
-    @DisplayName("ipKeyResolver should resolve client IP from X-Forwarded-For header")
-    void ipKeyResolverShouldUseXForwardedFor() {
+    @DisplayName("ipKeyResolver should resolve client IP from RemoteAddress")
+    void ipKeyResolverShouldUseRemoteAddress() {
+        MockServerHttpRequest request = MockServerHttpRequest.get("/api/v1/catalog/products")
+                .remoteAddress(new InetSocketAddress("192.168.1.100", 50000))
+                .header("X-Forwarded-For", "203.0.113.195, 70.41.3.18")
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        String resolvedKey = config.ipKeyResolver().resolve(exchange).block();
+        assertEquals("192.168.1.100", resolvedKey);
+    }
+
+    @Test
+    @DisplayName("ipKeyResolver should fallback to X-Forwarded-For if RemoteAddress is null")
+    void ipKeyResolverShouldFallbackToXForwardedFor() {
         MockServerHttpRequest request = MockServerHttpRequest.get("/api/v1/catalog/products")
                 .header("X-Forwarded-For", "203.0.113.195, 70.41.3.18")
                 .build();
@@ -24,18 +37,6 @@ class RateLimiterConfigTests {
 
         String resolvedKey = config.ipKeyResolver().resolve(exchange).block();
         assertEquals("203.0.113.195", resolvedKey);
-    }
-
-    @Test
-    @DisplayName("ipKeyResolver should fallback to remote address if X-Forwarded-For is missing")
-    void ipKeyResolverShouldFallbackToRemoteAddress() {
-        MockServerHttpRequest request = MockServerHttpRequest.get("/api/v1/catalog/products")
-                .remoteAddress(new InetSocketAddress("192.168.1.100", 50000))
-                .build();
-        MockServerWebExchange exchange = MockServerWebExchange.from(request);
-
-        String resolvedKey = config.ipKeyResolver().resolve(exchange).block();
-        assertEquals("192.168.1.100", resolvedKey);
     }
 
     @Test

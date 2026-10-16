@@ -68,4 +68,17 @@ class GatewayAssertionSignerTests {
         assertThrows(IllegalStateException.class, () -> new GatewayAssertionSigner(null));
         assertThrows(IllegalStateException.class, () -> new GatewayAssertionSigner("not-a-valid-key"));
     }
+
+    @Test
+    @DisplayName("Should reject RSA keys shorter than 2048 bits")
+    void shouldRejectRsaKeysShorterThan2048Bits() throws Exception {
+        KeyPairGenerator gen = KeyPairGenerator.getInstance("RSA");
+        gen.initialize(1024);
+        KeyPair weakPair = gen.generateKeyPair();
+        String weakPem = "-----BEGIN PRIVATE KEY-----\n" +
+                Base64.getEncoder().encodeToString(weakPair.getPrivate().getEncoded()) +
+                "\n-----END PRIVATE KEY-----";
+
+        assertThrows(IllegalStateException.class, () -> new GatewayAssertionSigner(weakPem));
+    }
 }

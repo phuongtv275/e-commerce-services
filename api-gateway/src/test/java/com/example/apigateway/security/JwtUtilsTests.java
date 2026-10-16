@@ -43,10 +43,11 @@ class JwtUtilsTests {
     }
 
     @Test
-    @DisplayName("parseToken with raw string secret should succeed")
+    @DisplayName("parseToken with raw string secret should succeed when secretFormat is raw")
     void testParseTokenWithRawStringSecret() {
         JwtProperties properties = new JwtProperties();
         properties.setSecretKey(RAW_STRING_SECRET);
+        properties.setSecretFormat("raw");
         JwtUtils jwtUtils = new JwtUtils(properties);
 
         var key = Keys.hmacShaKeyFor(RAW_STRING_SECRET.getBytes(StandardCharsets.UTF_8));
@@ -62,6 +63,16 @@ class JwtUtilsTests {
         assertEquals("bob", claims.getSubject());
         assertEquals("jti-2", claims.getId());
         assertTrue(jwtUtils.isTokenValid(token));
+    }
+
+    @Test
+    @DisplayName("Invalid Base64 in default base64 mode should throw exception and not fallback silently")
+    void testInvalidBase64ThrowsInBase64Mode() {
+        JwtProperties properties = new JwtProperties();
+        properties.setSecretKey("invalid-base64-character-that-is-at-least-32-chars!");
+        JwtUtils jwtUtils = new JwtUtils(properties);
+
+        assertThrows(Exception.class, () -> jwtUtils.parseToken("some.token"));
     }
 
     @Test

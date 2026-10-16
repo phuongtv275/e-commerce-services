@@ -26,6 +26,11 @@ public class JwtUtils {
 
     private final JwtProperties jwtProperties;
 
+    @jakarta.annotation.PostConstruct
+    public void validateSecretOnStartup() {
+        getSignKey();
+    }
+
     /**
      * Tạo SecretKey từ cấu hình (hỗ trợ cả Base64 và UTF-8 raw string >= 256 bits).
      * Phải dùng cùng thuật toán (HMAC-SHA256) với identity-service.
@@ -46,11 +51,8 @@ public class JwtUtils {
         } else if ("raw".equalsIgnoreCase(jwtProperties.getSecretFormat())) {
             keyBytes = secret.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         } else {
-            try {
-                keyBytes = Decoders.BASE64.decode(secret);
-            } catch (Exception ex) {
-                keyBytes = secret.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-            }
+            // Mode "base64" (mặc định): bắt buộc giải mã Base64 hợp lệ, ném exception nếu format sai
+            keyBytes = Decoders.BASE64.decode(secret);
         }
 
         if (keyBytes.length < 32) {

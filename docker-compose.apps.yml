@@ -15,7 +15,7 @@ services:
       REDIS_HOST: redis-cache
       REDIS_PORT: 6379
       REDIS_PASSWORD: rikkeiacademy
-      JWT_SECRET: ${JWT_SECRET}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
       GATEWAY_ASSERTION_PRIVATE_KEY: ${GATEWAY_ASSERTION_PRIVATE_KEY}
     depends_on:
       config-server:
