@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.UnexpectedRollbackException;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
@@ -70,12 +71,10 @@ public class IdempotentClaimManager {
                 // Đang được xử lý bởi worker khác và chưa hết hạn lease
                 return false;
             }
-            // Worker trước bị crash hoặc hết hạn lease: gia hạn và chiếm lại quyền xử lý
-            existing.setStatus(ProcessedStatus.PROCESSING);
-            existing.setExpiresAt(now.plusSeconds(CLAIM_TIMEOUT_SECONDS));
-            existing.setProcessedAt(now);
-            repository.saveAndFlush(existing);
-            return true;
+            // Worker trước bị crash hoặc hết hạn lease: tranh chấp atomic bằng conditional update
+            int reclaimed = repository.reclaimExpiredLease(
+                    eventId, consumerGroup, ProcessedStatus.PROCESSING, now.plusSeconds(CLAIM_TIMEOUT_SECONDS), now);
+            return reclaimed > 0;
         }
 
         try {
@@ -96,22 +95,13 @@ public class IdempotentClaimManager {
         }
     }
 
+    /**
+     * Ghi nhận trạng thái hoàn tất trong CÙNG transaction với nghiệp vụ của caller.
+     * Nếu transaction bên ngoài rollback, trạng thái COMPLETED cũng bị rollback đồng bộ,
+     * không làm mất message. Lỗi trong phương thức này sẽ được ném ra caller để kích hoạt retry.
+     */
+    @Transactional
     public void complete(String eventId, String consumerGroup) {
-        if (transactionTemplate == null) {
-            directComplete(eventId, consumerGroup);
-            return;
-        }
-        try {
-            transactionTemplate.execute(status -> {
-                directComplete(eventId, consumerGroup);
-                return null;
-            });
-        } catch (Exception e) {
-            log.warn("Failed to mark event id={} as COMPLETED in group {}: {}", eventId, consumerGroup, e.getMessage());
-        }
-    }
-
-    private void directComplete(String eventId, String consumerGroup) {
         repository.findByEventIdAndConsumerGroup(eventId, consumerGroup).ifPresent(record -> {
             record.setStatus(ProcessedStatus.COMPLETED);
             record.setExpiresAt(null);
@@ -120,6 +110,9 @@ public class IdempotentClaimManager {
         });
     }
 
+    /**
+     * Thu hồi claim khi logic nghiệp vụ ném ngoại lệ để Kafka có thể retry ngay lập tức.
+     */
     public void release(String eventId, String consumerGroup) {
         if (transactionTemplate == null) {
             directRelease(eventId, consumerGroup);

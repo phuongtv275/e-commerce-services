@@ -3,7 +3,7 @@
 Backend Microservices platform for multi-channel e-commerce system built with Spring Boot, Spring Cloud, Gradle, and Docker.
 
 - **Artifact Name:** `e-commerce-services`
-- **Version:** `0.1.3` (Semantic Versioning)
+- **Version:** `0.1.4` (Semantic Versioning)
 - **External Config Repository:** `../e-commerce-services-config`
 
 ---
@@ -48,7 +48,7 @@ e-commerce-services/
 ├── gradlew
 ├── settings.gradle                   # Includes subprojects dynamically
 ├── build.gradle                      # Root minimal build script
-├── gradle.properties                 # version=0.1.3
+├── gradle.properties                 # version=0.1.4
 ├── docker-compose.yml                # Backing Services + Config Server + Eureka Server
 ├── docker-compose.apps.yml           # 7 Business Microservices
 ├── .circleci/config.yml              # Automated CI Pipeline
