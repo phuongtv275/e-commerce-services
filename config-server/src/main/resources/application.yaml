@@ -15,6 +15,10 @@ spring:
             - file:../e-commerce-services-config
             - file:../../e-commerce-services-config
 
+eureka:
+  client:
+    enabled: false
+
 management:
   endpoints:
     web:

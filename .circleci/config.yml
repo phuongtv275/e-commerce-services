@@ -16,6 +16,19 @@ jobs:
       - run:
           name: Build and Run Tests
           command: ./gradlew test --no-daemon --stacktrace
+      - run:
+          name: Collect Test Results and Reports
+          when: always
+          command: |
+            mkdir -p build/test-results build/reports/tests
+            find . -mindepth 2 -type f -name "TEST-*.xml" -exec cp {} build/test-results/ \; || true
+            for d in */build/reports/tests/test; do
+              if [ -d "$d" ]; then
+                mod=$(echo "$d" | cut -d'/' -f1)
+                mkdir -p "build/reports/tests/$mod"
+                cp -r "$d"/* "build/reports/tests/$mod/" || true
+              fi
+            done
       - save_cache:
           paths:
             - ~/.gradle/caches

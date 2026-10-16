@@ -8,6 +8,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -30,11 +32,13 @@ class ConfigServerApplicationPositiveTests {
     }
 
     @Test
-    @DisplayName("Positive: Config fetch for identity-service should return datasource configuration")
+    @DisplayName("Positive: Config fetch for identity-service should return service-specific configuration")
     void testConfigFetchForKnownService() throws Exception {
         mockMvc.perform(get("/identity-service/default"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("identity-service"))
-                .andExpect(jsonPath("$.propertySources").isNotEmpty());
+                .andExpect(jsonPath("$.propertySources").isNotEmpty())
+                .andExpect(jsonPath("$.propertySources[*].name", hasItem(containsString("identity-service.yml"))))
+                .andExpect(jsonPath("$.propertySources[?(@.name =~ /.*identity-service\\.ya?ml.*/)].source['server.port']").value(8081));
     }
 }
