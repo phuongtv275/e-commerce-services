@@ -48,7 +48,7 @@ e-commerce-services/
 ├── gradlew
 ├── settings.gradle                   # Includes subprojects dynamically
 ├── build.gradle                      # Root minimal build script
-├── gradle.properties                 # version=0.1.0
+├── gradle.properties                 # version=0.1.1
 ├── docker-compose.yml                # Backing Services + Config Server + Eureka Server
 ├── docker-compose.apps.yml           # 7 Business Microservices
 ├── .circleci/config.yml              # Automated CI Pipeline

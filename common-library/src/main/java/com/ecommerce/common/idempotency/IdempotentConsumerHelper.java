@@ -26,8 +26,7 @@ public class IdempotentConsumerHelper {
         }
 
         try {
-            consumerLogic.accept(payload);
-
+            // Giành quyền xử lý (claim) trước bằng UNIQUE constraint (event_id, consumer_group)
             ProcessedEvent processedRecord = ProcessedEvent.builder()
                     .id(UUID.randomUUID())
                     .eventId(eventId)
@@ -36,13 +35,15 @@ public class IdempotentConsumerHelper {
                     .build();
 
             processedEventRepository.saveAndFlush(processedRecord);
-            log.debug("Marked event id={} as processed for consumer group {}", eventId, consumerGroup);
-            return true;
-
         } catch (DataIntegrityViolationException e) {
-            log.warn("Concurrent duplicate execution detected for event id={} in consumer group {}. Ignored gracefully.",
+            log.warn("Concurrent duplicate execution detected for event id={} in consumer group {}. Claim failed, skipping logic.",
                     eventId, consumerGroup);
             return false;
         }
+
+        // Chỉ khi claim thành công mới thực thi nghiệp vụ
+        consumerLogic.accept(payload);
+        log.debug("Successfully processed event id={} for consumer group {}", eventId, consumerGroup);
+        return true;
     }
 }

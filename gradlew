@@ -116,6 +116,13 @@ esac
 
 
 
+# Auto-detect local JDK 21 if JAVA_HOME is not set
+if [ -z "$JAVA_HOME" ] ; then
+    if [ -d "$HOME/.jdks/ms-21.0.12.1" ] ; then
+        export JAVA_HOME="$HOME/.jdks/ms-21.0.12.1"
+    fi
+fi
+
 # Determine the Java command to use to start the JVM.
 if [ -n "$JAVA_HOME" ] ; then
     if [ -x "$JAVA_HOME/jre/sh/java" ] ; then

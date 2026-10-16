@@ -77,10 +77,10 @@ public class TrustedHeaderAuthenticationFilter extends OncePerRequestFilter {
                     .parseSignedClaims(assertion)
                     .getPayload();
 
-            // Kiểm tra Audience Binding (aud claim bắt buộc phải chứa tên service hiện tại)
+            // Kiểm tra Audience Binding (aud claim bắt buộc phải khớp chính xác và duy nhất service hiện tại)
             Set<String> audiences = claims.getAudience();
-            if (audiences == null || !audiences.contains(applicationName)) {
-                log.warn("Audience binding validation failed! Token aud={}, expected applicationName={}",
+            if (audiences == null || audiences.size() != 1 || !audiences.contains(applicationName)) {
+                log.warn("Audience binding validation failed! Token aud={}, expected single applicationName={}",
                         audiences, applicationName);
                 sendErrorResponse(response, HttpStatus.FORBIDDEN, ErrorCode.ACCESS_DENIED,
                         "Mã xác thực không hợp lệ cho dịch vụ đích (Audience mismatch)");

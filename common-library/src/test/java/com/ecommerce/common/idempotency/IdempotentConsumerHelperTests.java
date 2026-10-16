@@ -84,7 +84,7 @@ class IdempotentConsumerHelperTests {
         });
 
         assertFalse(result);
-        assertTrue(executed.get()); // Logic chạy nhưng DB báo đã có luồng khác insert trước
+        assertFalse(executed.get()); // Business logic tuyệt đối không được chạy khi claim thất bại
     }
 
     @Test

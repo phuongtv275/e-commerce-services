@@ -22,7 +22,7 @@ public class OutboxReplayController {
     private final OutboxEventRepository outboxEventRepository;
 
     @PostMapping({"/api/v1/admin/outbox/replay/{id}", "/internal/outbox/replay/{id}"})
-    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SERVICE_ADMIN', 'SERVICE_ORDER', 'SERVICE_PAYMENT', 'SERVICE_INVENTORY')")
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SERVICE_ADMIN')")
     public ResponseEntity<ApiResponse<OutboxEvent>> replayOutboxEvent(@PathVariable UUID id) {
         OutboxEvent event = outboxEventRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("OutboxEvent", id));

@@ -98,6 +98,31 @@ class TrustedHeaderAuthenticationFilterTests {
     }
 
     @Test
+    @DisplayName("Negative: Token chứa nhiều audience (aud bao gồm cả service khác) bị từ chối với HTTP 403")
+    void testMultipleAudiencesRejected_Negative() throws ServletException, IOException {
+        String multiAudToken = Jwts.builder()
+                .subject("user-uuid-123")
+                .audience().add(TARGET_SERVICE).add("catalog-service").and() // 2 audiences
+                .claim("roles", List.of("CUSTOMER"))
+                .expiration(Date.from(Instant.now().plus(60, ChronoUnit.SECONDS)))
+                .signWith(keyPair.getPrivate(), Jwts.SIG.RS256)
+                .compact();
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader(SecurityConstants.HEADER_GATEWAY_ASSERTION, multiAudToken);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        FilterChain filterChain = (req, res) -> fail("Filter chain không được phép tiếp tục khi có nhiều audience");
+
+        filter.doFilter(request, response, filterChain);
+
+        assertEquals(403, response.getStatus());
+        assertTrue(response.getContentAsString().contains("ACCESS_DENIED"));
+        assertTrue(response.getContentAsString().contains("Audience mismatch"));
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
+    }
+
+    @Test
     @DisplayName("Negative: Token hết hạn bị từ chối với HTTP 401")
     void testExpiredToken_Negative() throws ServletException, IOException {
         String expiredToken = Jwts.builder()
