@@ -28,6 +28,9 @@ public class RateLimiterConfig {
     @Primary
     public KeyResolver ipKeyResolver() {
         return exchange -> {
+            if (Boolean.TRUE.equals(exchange.getAttribute("RATE_LIMITER_BYPASS"))) {
+                return Mono.just("bypass:" + java.util.UUID.randomUUID());
+            }
             String clientIp = Optional.ofNullable(exchange.getRequest().getHeaders().getFirst("X-Forwarded-For"))
                     .map(ips -> ips.split(",")[0].trim())
                     .orElseGet(() -> Optional.ofNullable(exchange.getRequest().getRemoteAddress())
@@ -44,6 +47,9 @@ public class RateLimiterConfig {
     @Bean
     public KeyResolver userKeyResolver() {
         return exchange -> {
+            if (Boolean.TRUE.equals(exchange.getAttribute("RATE_LIMITER_BYPASS"))) {
+                return Mono.just("bypass:" + java.util.UUID.randomUUID());
+            }
             String userId = exchange.getRequest().getHeaders().getFirst("X-User-Id");
             if (StringUtils.hasText(userId)) {
                 return Mono.just("user:" + userId.trim());

@@ -170,4 +170,69 @@ class JwtAuthFilterTests {
 
         verify(chain, times(1)).filter(any());
     }
+
+    @Test
+    @DisplayName("Catalog GET is whitelisted, but Catalog POST requires authentication")
+    void testCatalogPostIsNotWhitelisted() {
+        // GET is whitelisted
+        MockServerHttpRequest getReq = MockServerHttpRequest.get("/api/v1/catalog/products/1").build();
+        MockServerWebExchange getEx = MockServerWebExchange.from(getReq);
+        filter.filter(getEx, chain).block();
+        verify(chain, times(1)).filter(any());
+
+        // POST requires auth -> returns 401 without Bearer token
+        MockServerHttpRequest postReq = MockServerHttpRequest.post("/api/v1/catalog/products").build();
+        MockServerWebExchange postEx = MockServerWebExchange.from(postReq);
+        filter.filter(postEx, chain).block();
+        assertEquals(HttpStatus.UNAUTHORIZED, postEx.getResponse().getStatusCode());
+    }
+
+    @Test
+    @DisplayName("Protected path with email claim should propagate X-User-Email")
+    void testValidTokenPropagatesEmailHeader() {
+        MockServerHttpRequest request = MockServerHttpRequest.get("/api/v1/orders")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer valid-token")
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        Claims claims = mock(Claims.class);
+        when(claims.getSubject()).thenReturn("user-42");
+        when(claims.getId()).thenReturn("jti-42");
+        when(claims.get("roles", List.class)).thenReturn(List.of("ROLE_CUSTOMER"));
+        when(claims.get("email", String.class)).thenReturn("customer@example.com");
+        when(jwtUtils.parseToken("valid-token")).thenReturn(claims);
+        when(redisTemplate.hasKey("blacklist:jti-42")).thenReturn(Mono.just(false));
+
+        when(chain.filter(any())).thenAnswer(invocation -> {
+            ServerWebExchange mutated = invocation.getArgument(0);
+            assertEquals("customer@example.com", mutated.getRequest().getHeaders().getFirst("X-User-Email"));
+            return Mono.empty();
+        });
+
+        filter.filter(exchange, chain).block();
+        verify(chain, atLeastOnce()).filter(any());
+    }
+
+    @Test
+    @DisplayName("Admin payments route should resolve audience as payment-service")
+    void testAdminPaymentsResolvesCorrectAudience() {
+        MockServerHttpRequest request = MockServerHttpRequest.get("/api/v1/admin/payments/summary")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer valid-token")
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        Claims claims = mock(Claims.class);
+        when(claims.getSubject()).thenReturn("admin-user");
+        when(claims.getId()).thenReturn("jti-admin");
+        when(claims.get("roles", List.class)).thenReturn(List.of("ROLE_ADMIN"));
+        when(jwtUtils.parseToken("valid-token")).thenReturn(claims);
+        when(redisTemplate.hasKey("blacklist:jti-admin")).thenReturn(Mono.just(false));
+
+        when(assertionSigner.signAssertion(eq("admin-user"), any(), eq("payment-service")))
+                .thenReturn("signed-assertion");
+
+        filter.filter(exchange, chain).block();
+
+        verify(assertionSigner).signAssertion(eq("admin-user"), any(), eq("payment-service"));
+    }
 }

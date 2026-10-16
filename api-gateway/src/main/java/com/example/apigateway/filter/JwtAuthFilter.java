@@ -84,8 +84,8 @@ public class JwtAuthFilter implements WebFilter, Ordered {
         log.debug("[{}] Incoming request: {} {}", correlationId, request.getMethod(), path);
 
         // 1. Kiểm tra Whitelist
-        if (isWhitelisted(path)) {
-            log.debug("[{}] Path '{}' is whitelisted, skipping JWT validation", correlationId, path);
+        if (isWhitelisted(request.getMethod(), path)) {
+            log.debug("[{}] Path '{}' is whitelisted for method {}, skipping JWT validation", correlationId, path, request.getMethod());
             ServerHttpRequest mutatedRequest = request.mutate()
                     .header(CORRELATION_ID_HEADER, correlationId)
                     .build();
@@ -163,6 +163,11 @@ public class JwtAuthFilter implements WebFilter, Ordered {
                                 .header("X-User-Role", primaryRole)
                                 .header("X-User-Roles", String.join(",", roles != null ? roles : List.of()));
 
+                        String email = claims.get("email", String.class);
+                        if (email != null && !email.isBlank()) {
+                            reqBuilder.header("X-User-Email", email.trim());
+                        }
+
                         if (assertionToken != null) {
                             reqBuilder.header("X-Gateway-Assertion", assertionToken);
                         }
@@ -187,11 +192,21 @@ public class JwtAuthFilter implements WebFilter, Ordered {
         }
     }
 
-    private boolean isWhitelisted(String path) {
+    private boolean isWhitelisted(org.springframework.http.HttpMethod method, String path) {
         List<String> whitelistPaths = jwtProperties.getWhitelistPaths();
         if (whitelistPaths == null || whitelistPaths.isEmpty()) {
             return false;
         }
+
+        // Nếu là API catalog, chỉ whitelist cho các phương thức đọc (GET, HEAD, OPTIONS)
+        if (path.startsWith("/api/v1/catalog")) {
+            if (!org.springframework.http.HttpMethod.GET.equals(method)
+                    && !org.springframework.http.HttpMethod.HEAD.equals(method)
+                    && !org.springframework.http.HttpMethod.OPTIONS.equals(method)) {
+                return false;
+            }
+        }
+
         return whitelistPaths.stream().anyMatch(pattern -> antPathMatcher.match(pattern, path));
     }
 
@@ -200,18 +215,22 @@ public class JwtAuthFilter implements WebFilter, Ordered {
             return "identity-service";
         } else if (path.startsWith("/api/v1/catalog") || path.startsWith("/product") || path.startsWith("/api/products")) {
             return "catalog-service";
-        } else if (path.startsWith("/api/v1/inventory")) {
+        } else if (path.startsWith("/api/v1/inventory") || path.startsWith("/api/v1/admin/inventory")) {
             return "inventory-service";
-        } else if (path.startsWith("/api/v1/orders")) {
+        } else if (path.startsWith("/api/v1/orders") || path.startsWith("/api/v1/admin/order")) {
             return "order-service";
-        } else if (path.startsWith("/api/v1/payments")) {
+        } else if (path.startsWith("/api/v1/payments") || path.startsWith("/api/v1/admin/payments") || path.startsWith("/api/v1/admin/payment")) {
             return "payment-service";
-        } else if (path.startsWith("/api/v1/admin/notifications")) {
+        } else if (path.startsWith("/api/v1/admin/notifications") || path.startsWith("/api/v1/notifications")) {
             return "notification-service";
         } else if (path.startsWith("/api/v1/admin/")) {
             String[] parts = path.split("/");
             if (parts.length >= 5) {
-                return parts[4] + "-service";
+                String svc = parts[4];
+                if ("payments".equals(svc) || "payment".equals(svc)) {
+                    return "payment-service";
+                }
+                return svc.endsWith("-service") ? svc : svc + "-service";
             }
         }
         return "unknown-service";

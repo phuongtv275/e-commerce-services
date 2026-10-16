@@ -17,6 +17,12 @@ spring:
       timeout: 2000ms
   cloud:
     gateway:
+      default-filters:
+        - name: RequestRateLimiter
+          args:
+            redis-rate-limiter.replenishRate: ${RATE_LIMIT_REPLENISH:100}
+            redis-rate-limiter.burstCapacity: ${RATE_LIMIT_BURST:200}
+            key-resolver: "#{@userKeyResolver}"
       routes:
         - id: identity-public-auth
           uri: http://${IDENTITY_SERVICE_URL:identity-service:8081}
@@ -97,7 +103,7 @@ management:
       show-details: always
 
 jwt:
-  secret-key: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+  secret-key: ${JWT_SECRET}
   whitelist-paths:
     - /api/v1/auth/**
     - /identity/api/v1/auth/**

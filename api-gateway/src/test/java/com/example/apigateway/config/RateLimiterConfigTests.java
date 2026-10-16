@@ -8,6 +8,7 @@ import org.springframework.mock.web.server.MockServerWebExchange;
 import java.net.InetSocketAddress;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 class RateLimiterConfigTests {
 
@@ -59,5 +60,23 @@ class RateLimiterConfigTests {
 
         String resolvedKey = config.userKeyResolver().resolve(exchange).block();
         assertEquals("10.0.0.5", resolvedKey);
+    }
+
+    @Test
+    @DisplayName("KeyResolvers should return bypass key when RATE_LIMITER_BYPASS attribute is set")
+    void keyResolversShouldBypassWhenAttributeIsSet() {
+        MockServerHttpRequest request = MockServerHttpRequest.get("/api/v1/catalog/products")
+                .remoteAddress(new InetSocketAddress("10.0.0.5", 40000))
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+        exchange.getAttributes().put("RATE_LIMITER_BYPASS", true);
+
+        String ipKey = config.ipKeyResolver().resolve(exchange).block();
+        String userKey = config.userKeyResolver().resolve(exchange).block();
+
+        assertNotNull(ipKey);
+        assertNotNull(userKey);
+        org.junit.jupiter.api.Assertions.assertTrue(ipKey.startsWith("bypass:"));
+        org.junit.jupiter.api.Assertions.assertTrue(userKey.startsWith("bypass:"));
     }
 }

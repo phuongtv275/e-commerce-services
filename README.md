@@ -3,7 +3,7 @@
 Backend Microservices platform for multi-channel e-commerce system built with Spring Boot, Spring Cloud, Gradle, and Docker.
 
 - **Artifact Name:** `e-commerce-services`
-- **Version:** `0.1.6` (Semantic Versioning)
+- **Version:** `0.1.7` (Semantic Versioning)
 - **External Config Repository:** `../e-commerce-services-config`
 
 ---

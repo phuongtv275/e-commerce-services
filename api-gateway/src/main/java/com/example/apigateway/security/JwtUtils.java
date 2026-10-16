@@ -27,11 +27,23 @@ public class JwtUtils {
     private final JwtProperties jwtProperties;
 
     /**
-     * Tạo SecretKey từ chuỗi hex trong config.
+     * Tạo SecretKey từ cấu hình (hỗ trợ cả Base64 và UTF-8 raw string >= 256 bits).
      * Phải dùng cùng thuật toán (HMAC-SHA256) với identity-service.
      */
     private SecretKey getSignKey() {
-        byte[] keyBytes = Decoders.BASE64.decode(jwtProperties.getSecretKey());
+        String secret = jwtProperties.getSecretKey();
+        if (secret == null || secret.isBlank()) {
+            throw new IllegalArgumentException("JWT secret key must not be empty");
+        }
+        byte[] keyBytes;
+        try {
+            keyBytes = Decoders.BASE64.decode(secret.trim());
+            if (keyBytes.length < 32) {
+                keyBytes = secret.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            }
+        } catch (Exception ex) {
+            keyBytes = secret.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        }
         return Keys.hmacShaKeyFor(keyBytes);
     }
 
