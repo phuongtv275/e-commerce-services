@@ -1,0 +1,46 @@
+version: 2.1
+
+jobs:
+  build-and-test:
+    docker:
+      - image: cimg/openjdk:21.0
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - v1-gradle-dependencies-{{ checksum "settings.gradle" }}-{{ checksum "build.gradle" }}
+            - v1-gradle-dependencies-
+      - run:
+          name: Make Gradle Wrapper Executable
+          command: chmod +x gradlew
+      - run:
+          name: Build and Run Tests
+          command: ./gradlew test --no-daemon --stacktrace
+      - run:
+          name: Collect Test Results and Reports
+          when: always
+          command: |
+            mkdir -p build/test-results build/reports/tests
+            find . -mindepth 2 -type f -name "TEST-*.xml" -exec cp {} build/test-results/ \; || true
+            for d in */build/reports/tests/test; do
+              if [ -d "$d" ]; then
+                mod=$(echo "$d" | cut -d'/' -f1)
+                mkdir -p "build/reports/tests/$mod"
+                cp -r "$d"/* "build/reports/tests/$mod/" || true
+              fi
+            done
+      - save_cache:
+          paths:
+            - ~/.gradle/caches
+            - ~/.gradle/wrapper
+          key: v1-gradle-dependencies-{{ checksum "settings.gradle" }}-{{ checksum "build.gradle" }}
+      - store_test_results:
+          path: build/test-results
+      - store_artifacts:
+          path: build/reports/tests
+
+workflows:
+  version: 2
+  pipeline:
+    jobs:
+      - build-and-test

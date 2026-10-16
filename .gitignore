@@ -4,6 +4,8 @@ build/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/
+**/build/
+.gradle
 
 # Java
 *.class
@@ -19,7 +21,7 @@ build/
 out/
 .vscode/
 
-# Environment and sensitive files
+# Environment and logs
 .env
 *.log
 
@@ -27,7 +29,5 @@ out/
 .agents/
 AGENTS.md
 .mcp.json
-docs/plans/
-docs/specs/
-docs/superpowers/
+docs/
 .superpowers/
