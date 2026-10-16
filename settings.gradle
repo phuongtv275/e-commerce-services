@@ -1,11 +1,17 @@
 rootProject.name = 'e-commerce-services'
 
-include 'common-library'
-include 'config-server'
-include 'api-gateway'
-include 'identity-service'
-include 'catalog-service'
-include 'inventory-service'
-include 'order-service'
-include 'payment-service'
-include 'notification-service'
+[
+    'api-gateway',
+    'catalog-service',
+    'config-server',
+    'eureka-server',
+    'identity-service',
+    'inventory-service',
+    'notification-service',
+    'order-service',
+    'payment-service'
+].each { proj ->
+    if (file(proj).exists()) {
+        include proj
+    }
+}
