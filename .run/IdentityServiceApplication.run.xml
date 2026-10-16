@@ -1,0 +1,18 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="IdentityServiceApplication" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
+    <envs>
+      <env name="SPRING_DATASOURCE_URL" value="jdbc:postgresql://localhost:5432/identity_db" />
+      <env name="SPRING_DATASOURCE_USERNAME" value="postgres" />
+      <env name="SPRING_DATASOURCE_PASSWORD" value="postgres" />
+      <env name="REDIS_HOST" value="localhost" />
+      <env name="REDIS_PASSWORD" value="rikkeiacademy" />
+      <env name="EUREKA_SERVER_URL" value="http://localhost:8761/eureka/" />
+    </envs>
+    <option name="FRAME_DEACTIVATION_UPDATE_POLICY" value="UpdateClassesAndResources" />
+    <module name="e-commerce-services.identity-service.main" />
+    <option name="SPRING_BOOT_MAIN_CLASS" value="com.example.identityservice.IdentityServiceApplication" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

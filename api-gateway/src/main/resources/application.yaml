@@ -11,7 +11,7 @@ spring:
     import: "optional:configserver:${CONFIG_SERVER_URL:http://config-server:8888}"
   data:
     redis:
-      host: ${REDIS_HOST:redis-cache}
+      host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:rikkeiacademy}
       timeout: 2000ms
@@ -26,14 +26,14 @@ spring:
             deny-empty-key: false
       routes:
         - id: identity-public-auth
-          uri: http://${IDENTITY_SERVICE_URL:identity-service:8081}
+          uri: http://${IDENTITY_SERVICE_URL:localhost:8081}
           predicates:
             - Path=/api/v1/auth/**
           metadata:
             targetService: identity-service
 
         - id: identity-protected-users
-          uri: http://${IDENTITY_SERVICE_URL:identity-service:8081}
+          uri: http://${IDENTITY_SERVICE_URL:localhost:8081}
           predicates:
             - Path=/api/v1/users/**, /api/v1/admin/users/**
           metadata:
