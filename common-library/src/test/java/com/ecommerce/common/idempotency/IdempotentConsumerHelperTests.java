@@ -109,25 +109,20 @@ class IdempotentConsumerHelperTests {
     }
 
     @Test
-    @DisplayName("Negative: Business logic gặp lỗi ném ngoại lệ và claim được release để cho phép retry")
-    void testBusinessLogicFailure_ReleasesClaim_Negative() {
+    @DisplayName("Negative: Business logic gặp lỗi ném ngoại lệ được truyền tiếp ra ngoài để kích hoạt rollback transaction")
+    void testBusinessLogicFailure_PropagatesException_Negative() {
         String eventId = "event-uuid-fail";
         String consumerGroup = "order-group";
 
         when(processedEventRepository.existsByEventIdAndConsumerGroup(eventId, consumerGroup))
                 .thenReturn(false);
-        ProcessedEvent savedEvent = ProcessedEvent.builder().eventId(eventId).consumerGroup(consumerGroup).build();
-        when(processedEventRepository.findByEventIdAndConsumerGroup(eventId, consumerGroup))
-                .thenReturn(java.util.Optional.of(savedEvent));
 
         assertThrows(IllegalStateException.class, () ->
                 helper.processIdempotent(eventId, consumerGroup, "Data", p -> {
                     throw new IllegalStateException("Database deadlock or business error");
                 })
         );
-
-        verify(processedEventRepository).saveAndFlush(any(ProcessedEvent.class));
-        verify(processedEventRepository).delete(savedEvent);
     }
 }
+
 

@@ -126,8 +126,9 @@ public class CommonLibraryAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     @ConditionalOnBean(ProcessedEventRepository.class)
-    public IdempotentClaimManager idempotentClaimManager(ProcessedEventRepository processedEventRepository) {
-        return new IdempotentClaimManager(processedEventRepository);
+    public IdempotentClaimManager idempotentClaimManager(ProcessedEventRepository processedEventRepository,
+                                                         @Autowired(required = false) org.springframework.transaction.PlatformTransactionManager transactionManager) {
+        return new IdempotentClaimManager(processedEventRepository, transactionManager);
     }
 
     @Bean

@@ -31,7 +31,8 @@ public class IdempotentConsumerHelper {
 
         try {
             consumerLogic.accept(payload);
-            log.debug("Successfully processed event id={} for consumer group {}", eventId, consumerGroup);
+            claimManager.complete(eventId, consumerGroup);
+            log.debug("Successfully processed and completed event id={} for consumer group {}", eventId, consumerGroup);
             return true;
         } catch (RuntimeException | Error e) {
             log.warn("Business logic failed for event id={} in consumer group {}. Releasing claim to allow retry.",

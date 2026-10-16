@@ -33,6 +33,14 @@ public class ProcessedEvent {
     @Column(name = "consumer_group", nullable = false, length = 100)
     private String consumerGroup;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 20)
+    @Builder.Default
+    private ProcessedStatus status = ProcessedStatus.COMPLETED;
+
+    @Column(name = "expires_at")
+    private Instant expiresAt;
+
     @Column(name = "processed_at", nullable = false)
     private Instant processedAt;
 
@@ -43,6 +51,9 @@ public class ProcessedEvent {
         }
         if (processedAt == null) {
             processedAt = Instant.now();
+        }
+        if (status == null) {
+            status = ProcessedStatus.COMPLETED;
         }
     }
 }
