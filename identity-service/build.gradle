@@ -5,7 +5,7 @@ plugins {
 }
 
 group = 'com.example'
-version = '0.1.10'
+version = '0.1.11'
 description = 'identity-service'
 
 java {
@@ -33,6 +33,7 @@ dependencies {
 
     // 3. Cơ sở Dữ liệu & Flyway Migration
     runtimeOnly 'org.postgresql:postgresql'
+    implementation 'org.springframework.boot:spring-boot-starter-flyway'
     implementation 'org.flywaydb:flyway-core'
     implementation 'org.flywaydb:flyway-database-postgresql'
 
