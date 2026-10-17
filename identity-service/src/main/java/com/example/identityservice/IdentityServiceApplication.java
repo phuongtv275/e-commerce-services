@@ -41,8 +41,12 @@ public class IdentityServiceApplication {
                 if (jwtSecret == null || jwtSecret.isBlank() || defaultDevSecret.equals(jwtSecret.trim())) {
                     throw new IllegalStateException("CRITICAL SECURITY ERROR: In production profile, JWT_SECRET must be securely provided via environment variable and cannot use the development fallback key!");
                 }
-                if (gatewayAssertionPublicKey == null || gatewayAssertionPublicKey.isBlank() || gatewayAssertionPublicKey.contains("Ar+qpeFC7N9yY")) {
+                if (gatewayAssertionPublicKey == null || gatewayAssertionPublicKey.isBlank()) {
                     throw new IllegalStateException("CRITICAL SECURITY ERROR: In production profile, a secure non-default GATEWAY_ASSERTION_PUBLIC_KEY must be provided via environment variable!");
+                }
+                String pubKeyFp = computePublicKeyFingerprint(gatewayAssertionPublicKey);
+                if (INSECURE_DEV_PUBKEY_FINGERPRINTS.contains(pubKeyFp)) {
+                    throw new IllegalStateException("CRITICAL SECURITY ERROR: In production profile, GATEWAY_ASSERTION_PUBLIC_KEY must not use known development or repository keys!");
                 }
                 if (orderKey == null || defaultOrderKey.equals(orderKey.trim()) || notifKey == null || defaultNotifKey.equals(notifKey.trim())) {
                     throw new IllegalStateException("CRITICAL SECURITY ERROR: In production profile, internal service keys must be securely configured with non-default secrets!");
@@ -67,5 +71,23 @@ public class IdentityServiceApplication {
                 }
             }
         };
+    }
+
+    private static final java.util.Set<String> INSECURE_DEV_PUBKEY_FINGERPRINTS = java.util.Set.of(
+            "6de03012b9b8d443cfff074a7f3d228832b4c1fb26ddf730b4b449a741e350a1",
+            "4023c5654f3fe41457fae0de2eb0edf1f7694f0654624c2a2731a54da1351bbf"
+    );
+
+    private static String computePublicKeyFingerprint(String pem) {
+        try {
+            String clean = pem.replace("-----BEGIN PUBLIC KEY-----", "")
+                    .replace("-----END PUBLIC KEY-----", "")
+                    .replaceAll("\\s+", "");
+            byte[] bytes = java.util.Base64.getDecoder().decode(clean);
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            return java.util.HexFormat.of().formatHex(md.digest(bytes));
+        } catch (Exception e) {
+            return "";
+        }
     }
 }

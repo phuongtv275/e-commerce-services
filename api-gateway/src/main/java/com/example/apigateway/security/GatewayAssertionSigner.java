@@ -27,20 +27,39 @@ public class GatewayAssertionSigner {
 
     private final PrivateKey privateKey;
 
+    private static final java.util.Set<String> INSECURE_DEV_KEY_FINGERPRINTS = java.util.Set.of(
+            "b013aefb8083e80f6ac4d2188791eda10f245ef4491ec82c5eb3bc03abc9ea4c",
+            "45213b0adae47a0087ac71bd47eaab95a3195eda0afa592f73a7a78c2eabbae6"
+    );
+
     @org.springframework.beans.factory.annotation.Autowired
     public GatewayAssertionSigner(
             @Value("${gateway.assertion.private-key:}") String privateKeyPem,
             @org.springframework.beans.factory.annotation.Autowired(required = false) org.springframework.core.env.Environment environment) {
-        boolean isProd = environment != null && environment.matchesProfiles("prod", "production");
-        if (privateKeyPem != null && privateKeyPem.contains("MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKY")) {
-            if (isProd) {
-                throw new IllegalStateException("CRITICAL SECURITY ERROR: In production profile, GATEWAY_ASSERTION_PRIVATE_KEY must not use the default development key!");
-            }
-            log.warn("SECURITY WARNING: Gateway assertion is using the default development RSA private key. Ensure GATEWAY_ASSERTION_PRIVATE_KEY is securely configured in production!");
-        }
         this.privateKey = parsePrivateKey(privateKeyPem);
         if (this.privateKey == null) {
             throw new IllegalStateException("GATEWAY_ASSERTION_PRIVATE_KEY is missing or invalid. Gateway requires a valid RSA-2048 private key to sign identity assertions.");
+        }
+        String keyFingerprint = computeSha256Fingerprint(this.privateKey.getEncoded());
+        boolean isDevKey = INSECURE_DEV_KEY_FINGERPRINTS.contains(keyFingerprint);
+        boolean isProd = environment != null && environment.matchesProfiles("prod", "production");
+        if (isDevKey) {
+            if (isProd) {
+                throw new IllegalStateException("CRITICAL SECURITY ERROR: In production profile, GATEWAY_ASSERTION_PRIVATE_KEY must not use known development or repository keys!");
+            }
+            log.warn("SECURITY WARNING: Gateway assertion is using a known development RSA private key (SHA-256: {}). Ensure GATEWAY_ASSERTION_PRIVATE_KEY is securely configured in production!", keyFingerprint);
+        }
+    }
+
+    private static String computeSha256Fingerprint(byte[] data) {
+        if (data == null || data.length == 0) {
+            return "";
+        }
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            return java.util.HexFormat.of().formatHex(md.digest(data));
+        } catch (Exception e) {
+            return "";
         }
     }
 
