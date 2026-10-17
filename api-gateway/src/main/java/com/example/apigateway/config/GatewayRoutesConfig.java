@@ -27,7 +27,11 @@ public class GatewayRoutesConfig {
         String notifUri = notifUrl.startsWith("http") ? notifUrl : "http://" + notifUrl;
 
         return builder.routes()
-                .route("identity-public-auth", r -> r.path("/api/v1/auth/**", "/identity/api/v1/auth/**")
+                .route("identity-prefixed-routes", r -> r.path("/identity/**")
+                        .filters(f -> f.rewritePath("/identity/(?<remaining>.*)", "/${remaining}"))
+                        .metadata("targetService", "identity-service")
+                        .uri(identityUri))
+                .route("identity-public-auth", r -> r.path("/api/v1/auth/**")
                         .metadata("targetService", "identity-service")
                         .uri(identityUri))
                 .route("identity-protected-users", r -> r.path("/api/v1/users/**", "/api/v1/users", "/api/v1/admin/users/**", "/api/v1/admin/users", "/api/v1/admin/audit-logs/**", "/api/v1/admin/audit-logs")
