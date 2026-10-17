@@ -6,6 +6,19 @@ spring:
     name: identity-service
   config:
     import: "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+  data:
+    redis:
+      host: "${REDIS_HOST:localhost}"
+      port: ${REDIS_PORT:6379}
+      password: "${REDIS_PASSWORD:rikkeiacademy}"
 
 eureka:
   client:
@@ -20,3 +33,20 @@ management:
   endpoint:
     health:
       show-details: always
+
+app:
+  jwt:
+    secret: "${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}"
+    access-token-expiration: 900000 # 15 mins
+    refresh-token-expiration: 604800000 # 7 days
+
+security:
+  gateway-assertion:
+    public-key: "${GATEWAY_ASSERTION_PUBLIC_KEY:-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAr+qpeFC7N9yYQYKyKYd3\nwWHnhth0aithJSysJifsaz1k3n0QKMOejmJxK8BrGwYGSH7tCjlRkOUPG5h4jWgG\nuv3CgnCJR8hzSx362wYkcykI4e0Umjya3ebd2ArPKN0NgZ0xfIphtsS+OQCKFOF5\nFcZr/T14qP62Dtr+8K91VltTiNbOTxrGxBLfhxf9CZ9iSYZy3xnQW2lwL+wblp2p\ns8qOBLvCp8QP81Ffa7M8IM6qTX24g5FnmCub/jPJ/9oqJNFvRw5hRHQvNLvY72P9\na+nN4Jg4N36A2djbAR9Ws4kWkB4Inrbwg/kVrxWafrPoXCZG+aPcF3pbJ1Sz333E\nFwIDAQAB\n-----END PUBLIC KEY-----}"
+  internal-service-keys:
+    order-service: "${INTERNAL_KEY_ORDER:order-service-secret-key-32chars}"
+    notification-service: "${INTERNAL_KEY_NOTIFICATION:notification-service-secret-key-32c}"
+
+logging:
+  pattern:
+    correlation: "[%X{correlationId:-}] "

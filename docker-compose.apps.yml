@@ -12,9 +12,16 @@ services:
     environment:
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
+      IDENTITY_SERVICE_URL: identity-service:8081
+      CATALOG_SERVICE_URL: catalog-service:8082
+      INVENTORY_SERVICE_URL: inventory-service:8083
+      ORDER_SERVICE_URL: order-service:8084
+      PAYMENT_SERVICE_URL: payment-service:8085
+      NOTIFICATION_SERVICE_URL: notification-service:8086
       REDIS_HOST: redis-cache
       REDIS_PORT: 6379
       REDIS_PASSWORD: rikkeiacademy
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
       GATEWAY_ASSERTION_PRIVATE_KEY: ${GATEWAY_ASSERTION_PRIVATE_KEY}
     depends_on:
@@ -34,15 +41,23 @@ services:
     container_name: ecom-identity-service
     restart: always
     environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/identity_db
+      REDIS_HOST: redis-cache
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: rikkeiacademy
+      JWT_SECRET: ${JWT_SECRET}
+      GATEWAY_ASSERTION_PUBLIC_KEY: ${GATEWAY_ASSERTION_PUBLIC_KEY}
     depends_on:
       config-server:
         condition: service_healthy
       eureka-server:
         condition: service_healthy
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - ecom_backend_net

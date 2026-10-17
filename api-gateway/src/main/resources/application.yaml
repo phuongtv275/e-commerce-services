@@ -7,11 +7,13 @@ spring:
   autoconfigure:
     exclude:
       - com.ecommerce.common.config.CommonLibraryAutoConfiguration
+      - org.springframework.boot.security.reactive.autoconfigure.ReactiveSecurityAutoConfiguration
+      - org.springframework.boot.security.reactive.autoconfigure.ReactiveUserDetailsServiceAutoConfiguration
   config:
     import: "optional:configserver:${CONFIG_SERVER_URL:http://config-server:8888}"
   data:
     redis:
-      host: ${REDIS_HOST:redis-cache}
+      host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:rikkeiacademy}
       timeout: 2000ms
@@ -26,14 +28,14 @@ spring:
             deny-empty-key: false
       routes:
         - id: identity-public-auth
-          uri: http://${IDENTITY_SERVICE_URL:identity-service:8081}
+          uri: http://${IDENTITY_SERVICE_URL:localhost:8081}
           predicates:
             - Path=/api/v1/auth/**
           metadata:
             targetService: identity-service
 
         - id: identity-protected-users
-          uri: http://${IDENTITY_SERVICE_URL:identity-service:8081}
+          uri: http://${IDENTITY_SERVICE_URL:localhost:8081}
           predicates:
             - Path=/api/v1/users/**, /api/v1/admin/users/**
           metadata:
@@ -104,10 +106,32 @@ management:
       show-details: always
 
 jwt:
-  secret-key: ${JWT_SECRET}
+  secret-key: "${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}"
   whitelist-paths:
-    - /api/v1/auth/**
-    - /identity/api/v1/auth/**
+    - /api/v1/auth/register
+    - /api/v1/auth/login
+    - /api/v1/auth/verify-email
+    - /api/v1/auth/resend-verification
+    - /api/v1/auth/forgot-password
+    - /api/v1/auth/reset-password
+    - /api/v1/auth/refresh-token
+    - /api/v1/auth/refresh
+    - /identity/api/v1/auth/register
+    - /identity/api/v1/auth/login
+    - /identity/api/v1/auth/verify-email
+    - /identity/api/v1/auth/resend-verification
+    - /identity/api/v1/auth/forgot-password
+    - /identity/api/v1/auth/reset-password
+    - /identity/api/v1/auth/refresh-token
+    - /identity/api/v1/auth/refresh
+    - /api/auth/register
+    - /api/auth/login
+    - /api/auth/verify-email
+    - /api/auth/resend-verification
+    - /api/auth/forgot-password
+    - /api/auth/reset-password
+    - /api/auth/refresh-token
+    - /api/auth/refresh
     - /api/v1/catalog/products/**
     - /api/v1/catalog/categories/**
     - /api/v1/catalog/brands/**
@@ -117,7 +141,7 @@ jwt:
 
 gateway:
   assertion:
-    private-key: ${GATEWAY_ASSERTION_PRIVATE_KEY}
+    private-key: "${GATEWAY_ASSERTION_PRIVATE_KEY:-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCv6ql4ULs33JhB\ngrIph3fBYeeG2HRqK2ElLKwmJ+xrPWTefRAow56OYnErwGsbBgZIfu0KOVGQ5Q8b\nmHiNaAa6/cKCcIlHyHNLHfrbBiRzKQjh7RSaPJrd5t3YCs8o3Q2BnTF8imG2xL45\nAIoU4XkVxmv9PXio/rYO2v7wr3VWW1OI1s5PGsbEEt+HF/0Jn2JJhnLfGdBbaXAv\n7BuWnamzyo4Eu8KnxA/zUV9rszwgzqpNfbiDkWeYK5v+M8n/2iok0W9HDmFEdC80\nu9jvY/1r6c3gmDg3foDZ2NsBH1aziRaQHgietvCD+RWvFZp+s+hcJkb5o9wXelsn\nVLPffcQXAgMBAAECggEABcvuNKQ4XxFaRQJY+4xWsl0XA3b7cwol49MygvlazXfS\n7I/jaex0O43b28y12siaiWYBSo5z9RnPIyIlisdMPXoiICk0JNTik62TuAbeSZsn\nC0bEIIbxtXEnizhj9h0+ljBHUqq+qIaYHAm8Aw8g7cpBgbE2Wh82gYvOzcCCVcuT\nmKV0O2TkEI4ekBnGwhCLvD5ngou3GXEeaqYSAKJ+WX4gqW1sm3fJeL0meLL20EwF\nyVG/bRu4RLAKxMQx+89kcvhDhVmqxoCvfChWSwMNm9iA8kDEe/pZN3wAZ8FEjkES\nosUzo1eMT7eytnwkilSTn13cQgrFFGYcPpPKFwlUJQKBgQDcjTy6nuk0o78Z9TOl\nxhP5IjMPdX8buIVbEDq+ZkU31L2jcw3StIFraRYRCxbCpM+NkMvLHx6aEhKt+PLC\nJf/PMpvFrDFHT6zNarhtqrejL5JZFoBHpdWiIiX3GnGEdIUb7CFgL2tnje1GCggc\nCR5qlHcFd9LSB7lDUOmN2D/2XQKBgQDMMOHe9Avv9ji6smSBfCxrfX35vBXqu+DW\n2v87FSPAw+f4jQvDJxPTAcVT94cif/y7QHRun+HGxxVCkQYkmQXj4g/oH9mW4iv4\nPhdIBMuTNYML57RkaybrqK1FuvlqsZMyFFQYsU2XZGlK+FkuvYcIyCkqZvZtFjFH\npgw7kKVVAwKBgAF9pupwBo2HidQoFyhItXvaolO5bJmIXsZlzq/YyyD8fCetsGs7\nMyDBvhdxZr78FDcVwnrmA/PwqVWpuCJd1WPWKL1mU5Ly0+0zinmbTNB6ktetUkKp\nuU72QiFweVH246tzpiobR/OUPwVZLgLagO0hgch0reUjjjoJQvrlelE1AoGALk7b\nuuOgHXC61uSEVLVjoZEZU9zrH4wyZqfOAIk/zYTghAcA5uZi4ZTiOrPFavaZy6HH\nhhsuahVWZf1b5krqAg+PyfYHM+fhTvBN+WBVBvK44KdQywFeF03u1gScci0Jk+72\nT49OaIo2MvF10FrdWAmFBH/LXVwOGxC2b3/Tbx8CgYAGOjfSy/EEq4dYvmz/u48J\nq8z80zqMFAhORqcEr6rATvDkQhgz94GsIRE8YoiHYQ/OTI2w3DZ6/bX6DypZ42Jd\n+CBhp/R8mGn2eZNVoarhDrilDv3DKn5g2rNCIyQbNqgKGHQoxnzTk45NXyrjnkMk\ntnbNJSjo8hjoNGGfW8vUYg==\n-----END PRIVATE KEY-----}"
 
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:8080}

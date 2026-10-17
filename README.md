@@ -3,7 +3,7 @@
 Backend Microservices platform for multi-channel e-commerce system built with Spring Boot, Spring Cloud, Gradle, and Docker.
 
 - **Artifact Name:** `e-commerce-services`
-- **Version:** `0.1.9` (Semantic Versioning)
+- **Version:** `0.1.14` (Semantic Versioning)
 - **External Config Repository:** `../e-commerce-services-config`
 
 ---
@@ -14,7 +14,7 @@ Backend Microservices platform for multi-channel e-commerce system built with Sp
 | :--- | :---: | :--- | :--- |
 | **common-library** | N/A | Shared Library: API Response, Global Exception, Tracing & Zero-Trust Filters, Transactional Outbox, Event Contracts, Idempotency | Plain Java Library (`java-library`), Java 21, Spring Boot BOM |
 | **api-gateway** | `8080` | Single Public Entrypoint, Centralized Routing, Header Sanitization, JWT Auth & Blacklist, RSA Assertion Signing (Audience Binding), Redis Rate Limiter, W3C CORS & Security Headers | Spring Cloud Gateway (WebFlux), Reactive Redis, Eureka Client |
-| **identity-service** | Internal (`8081`) | Authentication, Authorization, Users (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`identity_db`) |
+| **identity-service** | Internal (`8081`) | Authentication, Authorization, Users, IAM, Audit Logs, Inter-Service Auth (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`identity_db`), Redis Blacklist, Flyway |
 | **catalog-service** | Internal (`8082`) | Products, Categories, Search (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`catalog_db`), Elasticsearch |
 | **inventory-service** | Internal (`8083`) | Stock, Warehouses, Distributed Locks (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`inventory_db`), Redis |
 | **order-service** | Internal (`8084`) | Cart, Orders, Checkout (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`order_db`), Kafka |
@@ -98,3 +98,31 @@ To launch all business microservices alongside backing infrastructure:
 ```bash
 docker compose -p ecom -f docker-compose.yml -f docker-compose.apps.yml up -d --build
 ```
+
+---
+
+## 5. Identity Service Architecture (`identity-service`)
+
+Identity Service handles authentication, authorization, user profiles, address books, and administrative IAM capabilities with zero-trust inter-service boundaries.
+
+### Key Architectural Invariants
+- **Password Security:** Hashes stored using BCrypt with cost factor 12 (`BCryptPasswordEncoder(12)`).
+- **Session & Refresh Token Security:** Refresh tokens are never stored plaintext; only SHA-256 hashes are persisted. Supports token rotation with pessimistic locking (`PESSIMISTIC_WRITE`). Token reuse attacks immediately revoke the entire token family.
+- **Token Invalidation:** Logout invalidates access tokens using Redis TTL-based blacklisting and immediately revokes active refresh tokens.
+- **Anti-BOLA Protection:** All address book operations (`GET`, `PUT`, `DELETE`, `PATCH /default`) strictly enforce `user_id == currentUserId`.
+- **Atomic Password Resets:** Reset tokens are consumed using atomic CAS SQL updates (`UPDATE ... SET used = true WHERE token_hash = :hash AND used = false AND expires_at > now()`) preventing concurrent replay.
+- **Inter-Service Security:** Internal endpoints (`/internal/**`) require caller-specific keys (`X-Calling-Service` & `X-Internal-Service-Key`), assigning caller-scoped roles (`ROLE_SERVICE_ORDER`, `ROLE_SERVICE_NOTIFICATION`). Rejects `X-Gateway-Assertion` to enforce private network boundary.
+- **Audit Logging:** Administrative IAM modifications (role assignment/revocation) and security-critical operations are recorded in `audit_logs` with actor details, deltas, and correlation IDs.
+- **E2E Integration Verification:** 25 production-grade test scenarios across public authentication, session security, BOLA prevention, RBAC, and zero-trust internal endpoints.
+
+---
+
+## 6. Phase 4 End-to-End Test Suite
+
+An automated shell script is provided to verify all 25 security and functional scenarios against running services (API Gateway on port `8080` and Identity Service on port `8081`):
+
+```bash
+bash /home/trgphun/.gemini/antigravity-cli/brain/a807e32a-a68d-4dfe-98f4-0e82fb87f635/scratch/test-identity-gateway-e2e.sh
+```
+
+

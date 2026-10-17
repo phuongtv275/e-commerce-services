@@ -14,7 +14,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @org.springframework.test.context.TestPropertySource(properties = {
-        "eureka.client.enabled=false"
+        "eureka.client.enabled=false",
+        "spring.flyway.enabled=false",
+        "spring.jpa.hibernate.ddl-auto=create-drop",
+        "management.health.redis.enabled=false"
 })
 class IdentityServicePositiveTests {
 

@@ -211,7 +211,9 @@ public class JwtAuthFilter implements WebFilter, Ordered {
     }
 
     private String resolveTargetService(String path) {
-        if (path.startsWith("/api/v1/auth") || path.startsWith("/api/v1/users") || path.startsWith("/api/v1/admin/users") || path.startsWith("/identity")) {
+        if (path.startsWith("/api/v1/auth") || path.startsWith("/api/v1/users")
+                || path.startsWith("/api/v1/admin/users") || path.startsWith("/api/v1/admin/audit-logs")
+                || path.startsWith("/identity")) {
             return "identity-service";
         } else if (path.startsWith("/api/v1/catalog") || path.startsWith("/product") || path.startsWith("/api/products")) {
             return "catalog-service";

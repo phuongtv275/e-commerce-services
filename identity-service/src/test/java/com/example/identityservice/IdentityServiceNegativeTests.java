@@ -13,7 +13,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @org.springframework.test.context.TestPropertySource(properties = {
-        "eureka.client.enabled=false"
+        "eureka.client.enabled=false",
+        "spring.flyway.enabled=false",
+        "spring.jpa.hibernate.ddl-auto=create-drop"
 })
 class IdentityServiceNegativeTests {
 
@@ -23,7 +25,7 @@ class IdentityServiceNegativeTests {
     @Test
     @DisplayName("Negative: Non-existent endpoint should return 404 Not Found")
     void testNonExistentEndpointReturnsNotFound() throws Exception {
-        mockMvc.perform(get("/api/v1/non-existent-resource"))
+        mockMvc.perform(get("/api/v1/auth/non-existent-resource"))
                 .andExpect(status().isNotFound());
     }
 }

@@ -21,10 +21,20 @@ import javax.crypto.SecretKey;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class JwtUtils {
 
     private final JwtProperties jwtProperties;
+    private final org.springframework.core.env.Environment environment;
+
+    public JwtUtils(JwtProperties jwtProperties) {
+        this(jwtProperties, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public JwtUtils(JwtProperties jwtProperties, @org.springframework.beans.factory.annotation.Autowired(required = false) org.springframework.core.env.Environment environment) {
+        this.jwtProperties = jwtProperties;
+        this.environment = environment;
+    }
 
     @jakarta.annotation.PostConstruct
     public void validateSecretOnStartup() {
@@ -37,8 +47,19 @@ public class JwtUtils {
      */
     private SecretKey getSignKey() {
         String secret = jwtProperties.getSecretKey();
-        if (secret == null || secret.isBlank()) {
-            throw new IllegalArgumentException("JWT secret key must not be empty");
+        boolean isProd = environment != null && environment.matchesProfiles("prod", "production");
+
+        if (secret == null || secret.isBlank() || "${JWT_SECRET}".equals(secret)) {
+            if (isProd) {
+                throw new IllegalStateException("CRITICAL SECURITY ERROR: In production profile, JWT_SECRET must be securely provided via environment variable!");
+            }
+            log.warn("SECURITY WARNING: JWT_SECRET environment variable is missing or placeholder. Falling back to default development secret. DO NOT USE IN PRODUCTION!");
+            secret = "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970";
+        } else if ("404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970".equals(secret.trim())) {
+            if (isProd) {
+                throw new IllegalStateException("CRITICAL SECURITY ERROR: Default development JWT secret key detected in production profile!");
+            }
+            log.warn("SECURITY WARNING: Default development JWT secret key is detected. Ensure JWT_SECRET is rotated for production environments!");
         }
 
         secret = secret.trim();
@@ -47,12 +68,15 @@ public class JwtUtils {
         if (secret.startsWith("raw:")) {
             keyBytes = secret.substring(4).getBytes(java.nio.charset.StandardCharsets.UTF_8);
         } else if (secret.startsWith("base64:")) {
-            keyBytes = Decoders.BASE64.decode(secret.substring(7).trim());
+            String b64 = secret.substring(7).trim();
+            keyBytes = (b64.contains("-") || b64.contains("_")) ? Decoders.BASE64URL.decode(b64) : Decoders.BASE64.decode(b64);
         } else if ("raw".equalsIgnoreCase(jwtProperties.getSecretFormat())) {
             keyBytes = secret.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         } else {
-            // Mode "base64" (mặc định): bắt buộc giải mã Base64 hợp lệ, ném exception nếu format sai
-            keyBytes = Decoders.BASE64.decode(secret);
+            // Mode "base64" (mặc định): hỗ trợ cả standard Base64 và Base64URL
+            keyBytes = (secret.contains("-") || secret.contains("_"))
+                    ? Decoders.BASE64URL.decode(secret)
+                    : Decoders.BASE64.decode(secret);
         }
 
         if (keyBytes.length < 32) {

@@ -3,6 +3,7 @@ WORKDIR /workspace
 
 COPY gradlew settings.gradle build.gradle gradle.properties ./
 COPY gradle ./gradle
+COPY common-library ./common-library
 COPY identity-service ./identity-service
 
 RUN chmod +x gradlew && ./gradlew :identity-service:bootJar --no-daemon -x test
