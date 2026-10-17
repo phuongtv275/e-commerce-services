@@ -3,7 +3,7 @@
 Backend Microservices platform for multi-channel e-commerce system built with Spring Boot, Spring Cloud, Gradle, and Docker.
 
 - **Artifact Name:** `e-commerce-services`
-- **Version:** `0.1.13` (Semantic Versioning)
+- **Version:** `0.1.14` (Semantic Versioning)
 - **External Config Repository:** `../e-commerce-services-config`
 
 ---
@@ -113,4 +113,16 @@ Identity Service handles authentication, authorization, user profiles, address b
 - **Atomic Password Resets:** Reset tokens are consumed using atomic CAS SQL updates (`UPDATE ... SET used = true WHERE token_hash = :hash AND used = false AND expires_at > now()`) preventing concurrent replay.
 - **Inter-Service Security:** Internal endpoints (`/internal/**`) require caller-specific keys (`X-Calling-Service` & `X-Internal-Service-Key`), assigning caller-scoped roles (`ROLE_SERVICE_ORDER`, `ROLE_SERVICE_NOTIFICATION`). Rejects `X-Gateway-Assertion` to enforce private network boundary.
 - **Audit Logging:** Administrative IAM modifications (role assignment/revocation) and security-critical operations are recorded in `audit_logs` with actor details, deltas, and correlation IDs.
+- **E2E Integration Verification:** 25 production-grade test scenarios across public authentication, session security, BOLA prevention, RBAC, and zero-trust internal endpoints.
+
+---
+
+## 6. Phase 4 End-to-End Test Suite
+
+An automated shell script is provided to verify all 25 security and functional scenarios against running services (API Gateway on port `8080` and Identity Service on port `8081`):
+
+```bash
+bash /home/trgphun/.gemini/antigravity-cli/brain/a807e32a-a68d-4dfe-98f4-0e82fb87f635/scratch/test-identity-gateway-e2e.sh
+```
+
 

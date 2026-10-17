@@ -9,13 +9,13 @@ INSERT INTO roles (id, name, description) VALUES
 ON CONFLICT (name) DO NOTHING;
 
 -- 2. Khởi tạo tài khoản Administrator mặc định
--- Mật khẩu mặc định: Admin@123456 (BCrypt cost 12 hash: $2a$12$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy)
+-- Mật khẩu mặc định: Admin@123456 (BCrypt cost 12 hash: $2a$12$Cy9GaGBoOzeE9axBnnbHKe7mvwXWjpLq8jnHUyGtGEcOWhoTKFisC)
 INSERT INTO users (
     id, email, password_hash, full_name, phone_number, status, email_verified, created_at, updated_at
 ) VALUES (
     '10000000-0000-0000-0000-000000000001',
     'admin@ecom.local',
-    '$2a$12$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy',
+    '$2a$12$Cy9GaGBoOzeE9axBnnbHKe7mvwXWjpLq8jnHUyGtGEcOWhoTKFisC',
     'System Administrator',
     '0900000001',
     'ACTIVE',

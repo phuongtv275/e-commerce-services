@@ -32,7 +32,7 @@ public class GatewayAssertionSigner {
             @Value("${gateway.assertion.private-key:}") String privateKeyPem,
             @org.springframework.beans.factory.annotation.Autowired(required = false) org.springframework.core.env.Environment environment) {
         boolean isProd = environment != null && environment.matchesProfiles("prod", "production");
-        if (privateKeyPem != null && privateKeyPem.contains("MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDPhMtrH9BWAw22")) {
+        if (privateKeyPem != null && privateKeyPem.contains("MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKY")) {
             if (isProd) {
                 throw new IllegalStateException("CRITICAL SECURITY ERROR: In production profile, GATEWAY_ASSERTION_PRIVATE_KEY must not use the default development key!");
             }

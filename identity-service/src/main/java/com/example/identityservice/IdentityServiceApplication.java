@@ -41,7 +41,7 @@ public class IdentityServiceApplication {
                 if (jwtSecret == null || jwtSecret.isBlank() || defaultDevSecret.equals(jwtSecret.trim())) {
                     throw new IllegalStateException("CRITICAL SECURITY ERROR: In production profile, JWT_SECRET must be securely provided via environment variable and cannot use the development fallback key!");
                 }
-                if (gatewayAssertionPublicKey == null || gatewayAssertionPublicKey.isBlank() || gatewayAssertionPublicKey.contains("QDPhMtrH9BWAw22")) {
+                if (gatewayAssertionPublicKey == null || gatewayAssertionPublicKey.isBlank() || gatewayAssertionPublicKey.contains("Ar+qpeFC7N9yY")) {
                     throw new IllegalStateException("CRITICAL SECURITY ERROR: In production profile, a secure non-default GATEWAY_ASSERTION_PUBLIC_KEY must be provided via environment variable!");
                 }
                 if (orderKey == null || defaultOrderKey.equals(orderKey.trim()) || notifKey == null || defaultNotifKey.equals(notifKey.trim())) {
