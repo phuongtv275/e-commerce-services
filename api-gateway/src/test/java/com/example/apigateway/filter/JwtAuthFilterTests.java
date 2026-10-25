@@ -45,6 +45,7 @@ class JwtAuthFilterTests {
                 "/api/v1/auth/register",
                 "/api/v1/auth/refresh-token",
                 "/api/v1/catalog/products/**",
+                "/api/v1/payments/vnpay/ipn",
                 "/actuator/**"
         ));
         objectMapper = new ObjectMapper();
@@ -243,6 +244,45 @@ class JwtAuthFilterTests {
     void testProtectedAuthEndpointRequiresAuth() {
         MockServerHttpRequest request = MockServerHttpRequest.post("/api/v1/auth/change-password").build();
         MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        filter.filter(exchange, chain).block();
+
+        assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
+        verifyNoInteractions(chain);
+    }
+
+    @Test
+    @DisplayName("Finding 8: GET /api/v1/payments/vnpay/ipn is whitelisted and bypasses authentication")
+    void testVnpayIpnGetIsWhitelisted() {
+        MockServerHttpRequest getReq = MockServerHttpRequest.get("/api/v1/payments/vnpay/ipn")
+                .queryParam("vnp_ResponseCode", "00")
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(getReq);
+
+        filter.filter(exchange, chain).block();
+
+        verify(chain, times(1)).filter(any());
+        verifyNoInteractions(jwtUtils);
+        verifyNoInteractions(redisTemplate);
+    }
+
+    @Test
+    @DisplayName("Finding 8: POST /api/v1/payments/vnpay/ipn is NOT whitelisted and requires authentication")
+    void testVnpayIpnPostIsNotWhitelisted() {
+        MockServerHttpRequest postReq = MockServerHttpRequest.post("/api/v1/payments/vnpay/ipn").build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(postReq);
+
+        filter.filter(exchange, chain).block();
+
+        assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
+        verifyNoInteractions(chain);
+    }
+
+    @Test
+    @DisplayName("Finding 8: Other non-GET methods on /api/v1/payments/vnpay/ipn are NOT whitelisted")
+    void testVnpayIpnNonGetMethodsAreNotWhitelisted() {
+        MockServerHttpRequest putReq = MockServerHttpRequest.put("/api/v1/payments/vnpay/ipn").build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(putReq);
 
         filter.filter(exchange, chain).block();
 

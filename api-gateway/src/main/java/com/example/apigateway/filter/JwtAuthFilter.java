@@ -207,6 +207,13 @@ public class JwtAuthFilter implements WebFilter, Ordered {
             }
         }
 
+        // Chỉ GET /api/v1/payments/vnpay/ipn mới được whitelist; bất kỳ method nào khác đều không được whitelist
+        if (antPathMatcher.match("/api/v1/payments/vnpay/ipn", path) || path.startsWith("/api/v1/payments/vnpay/ipn")) {
+            if (!org.springframework.http.HttpMethod.GET.equals(method)) {
+                return false;
+            }
+        }
+
         return whitelistPaths.stream().anyMatch(pattern -> antPathMatcher.match(pattern, path));
     }
 

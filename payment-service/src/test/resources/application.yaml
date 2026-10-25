@@ -1,0 +1,37 @@
+spring:
+  application:
+    name: payment-service
+  datasource:
+    url: jdbc:h2:mem:payment_db;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+  flyway:
+    enabled: false
+
+eureka:
+  client:
+    enabled: false
+
+vnpay:
+  tmn-code: TESTTMN
+  hash-secret: SECRET12345678901234567890123456789012
+  ip-address: 103.1.2.3
+  pay-url: https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
+  api-url: https://sandbox.vnpayment.vn/merchant_webapi/api/transaction
+  return-url: https://merchant.example.com/checkout/return
+  ipn-url: https://merchant.example.com/api/v1/payments/vnpay/ipn
+  version: 2.1.0
+  order-type: other
+  locale: vn
+  expire-minutes: 15
+
+services:
+  order-service:
+    base-url: http://order-service:8084
+    internal-key: test-internal-key

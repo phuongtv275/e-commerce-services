@@ -16,7 +16,7 @@ public class GatewayRoutesConfig {
             @Value("${CATALOG_SERVICE_URL:catalog-service:8082}") String catalogUrl,
             @Value("${INVENTORY_SERVICE_URL:inventory-service:8083}") String inventoryUrl,
             @Value("${ORDER_SERVICE_URL:order-service:8084}") String orderUrl,
-            @Value("${PAYMENT_SERVICE_URL:payment-service:8085}") String paymentUrl,
+            @Value("${PAYMENT_SERVICE_URL:localhost:8085}") String paymentUrl,
             @Value("${NOTIFICATION_SERVICE_URL:notification-service:8086}") String notifUrl
     ) {
         String identityUri = identityUrl.startsWith("http") ? identityUrl : "http://" + identityUrl;
