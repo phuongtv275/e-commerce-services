@@ -77,6 +77,24 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
     }
 
+    @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNoResourceFoundException(org.springframework.web.servlet.resource.NoResourceFoundException ex) {
+        log.warn("Resource not found: {}, correlationId={}", ex.getMessage(), MDC.get("correlationId"));
+        ApiResponse<Void> body = ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND, "Không tìm thấy tài nguyên yêu cầu");
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
+    }
+
+    @ExceptionHandler({
+            org.springframework.web.bind.MissingRequestHeaderException.class,
+            org.springframework.web.bind.MissingServletRequestParameterException.class,
+            org.springframework.http.converter.HttpMessageNotReadableException.class
+    })
+    public ResponseEntity<ApiResponse<Void>> handleBadRequestException(Exception ex) {
+        log.warn("Bad request exception: {}, correlationId={}", ex.getMessage(), MDC.get("correlationId"));
+        ApiResponse<Void> body = ApiResponse.error(ErrorCode.VALIDATION_ERROR, ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGeneralException(Exception ex) {
         log.error("Unhandled exception caught by GlobalExceptionHandler, correlationId={}",
