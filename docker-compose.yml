@@ -65,8 +65,19 @@ services:
     networks:
       - ecom_data_net
 
+  redis-insight:
+    image: redis/redisinsight:latest
+    restart: always
+    container_name: redis-insight
+    ports:
+      - "5540:5540"
+    volumes:
+      - redisinsight_data:/data
+    networks:
+      - ecom_data_net
+
   elasticsearch:
-    image: elasticsearch:8.13.4
+    image: elasticsearch:9.5.5
     restart: always
     container_name: elasticsearch
     ports:
@@ -76,7 +87,7 @@ services:
       - xpack.security.enabled=false
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
     volumes:
-      - elasticsearch_data:/usr/share/elasticsearch/data
+      - elasticsearch_data_v9:/usr/share/elasticsearch/data
     networks:
       - ecom_data_net
 
@@ -141,3 +152,5 @@ networks:
 volumes:
   postgres_data:
   elasticsearch_data:
+  elasticsearch_data_v9:
+  redisinsight_data:

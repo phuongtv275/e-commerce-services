@@ -13,7 +13,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @org.springframework.test.context.TestPropertySource(properties = {
-        "eureka.client.enabled=false"
+        "eureka.client.enabled=false",
+        "spring.flyway.enabled=false",
+        "spring.jpa.hibernate.ddl-auto=none"
 })
 class CatalogServiceNegativeTests {
 
@@ -21,9 +23,17 @@ class CatalogServiceNegativeTests {
     private MockMvc mockMvc;
 
     @Test
-    @DisplayName("Negative: Non-existent endpoint should return 404 Not Found")
+    @DisplayName("Negative: Non-existent endpoint should return 404 Not Found for authenticated request")
     void testNonExistentEndpointReturnsNotFound() throws Exception {
-        mockMvc.perform(get("/api/v1/non-existent-resource"))
+        mockMvc.perform(get("/api/v1/non-existent-resource")
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user("testuser")))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("Negative: Non-existent endpoint should return 401 Unauthorized for anonymous request")
+    void testNonExistentEndpointReturnsUnauthorizedForAnonymous() throws Exception {
+        mockMvc.perform(get("/api/v1/non-existent-resource"))
+                .andExpect(status().isUnauthorized());
     }
 }

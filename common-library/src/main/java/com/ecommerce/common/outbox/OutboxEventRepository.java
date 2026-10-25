@@ -24,4 +24,6 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEvent, UUID> 
     );
 
     List<OutboxEvent> findByStatus(OutboxStatus status);
+
+    List<OutboxEvent> findByCreatedAtGreaterThanEqual(Instant since);
 }

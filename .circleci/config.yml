@@ -1,9 +1,10 @@
 version: 2.1
 
-jobs:
-  build-and-test:
-    docker:
-      - image: cimg/openjdk:21.0
+commands:
+  run-module-test:
+    parameters:
+      module:
+        type: string
     steps:
       - checkout
       - restore_cache:
@@ -14,21 +15,18 @@ jobs:
           name: Make Gradle Wrapper Executable
           command: chmod +x gradlew
       - run:
-          name: Build and Run Tests
-          command: ./gradlew test --no-daemon --stacktrace
+          name: Run << parameters.module >> Tests
+          command: ./gradlew :<< parameters.module >>:test --no-daemon --stacktrace
       - run:
           name: Collect Test Results and Reports
           when: always
           command: |
             mkdir -p build/test-results build/reports/tests
-            find . -mindepth 2 -type f -name "TEST-*.xml" -exec cp {} build/test-results/ \; || true
-            for d in */build/reports/tests/test; do
-              if [ -d "$d" ]; then
-                mod=$(echo "$d" | cut -d'/' -f1)
-                mkdir -p "build/reports/tests/$mod"
-                cp -r "$d"/* "build/reports/tests/$mod/" || true
-              fi
-            done
+            find << parameters.module >> -type f -name "TEST-*.xml" -exec cp {} build/test-results/ \; || true
+            if [ -d "<< parameters.module >>/build/reports/tests/test" ]; then
+              mkdir -p "build/reports/tests/<< parameters.module >>"
+              cp -r << parameters.module >>/build/reports/tests/test/* "build/reports/tests/<< parameters.module >>/" || true
+            fi
       - save_cache:
           paths:
             - ~/.gradle/caches
@@ -39,8 +37,60 @@ jobs:
       - store_artifacts:
           path: build/reports/tests
 
+jobs:
+  test-common-library:
+    docker:
+      - image: cimg/openjdk:21.0
+    steps:
+      - run-module-test:
+          module: common-library
+
+  test-config-server:
+    docker:
+      - image: cimg/openjdk:21.0
+    steps:
+      - run-module-test:
+          module: config-server
+
+  test-eureka-server:
+    docker:
+      - image: cimg/openjdk:21.0
+    steps:
+      - run-module-test:
+          module: eureka-server
+
+  test-api-gateway:
+    docker:
+      - image: cimg/openjdk:21.0
+    steps:
+      - run-module-test:
+          module: api-gateway
+
+  test-identity-service:
+    docker:
+      - image: cimg/openjdk:21.0
+    steps:
+      - run-module-test:
+          module: identity-service
+
+  test-catalog-service:
+    docker:
+      - image: cimg/openjdk:21.0
+    steps:
+      - run-module-test:
+          module: catalog-service
+
 workflows:
   version: 2
   pipeline:
     jobs:
-      - build-and-test
+      - test-common-library
+      - test-config-server
+      - test-eureka-server
+      - test-api-gateway
+      - test-identity-service:
+          requires:
+            - test-common-library
+      - test-catalog-service:
+          requires:
+            - test-common-library

@@ -10,3 +10,5 @@ allprojects {
         mavenCentral()
     }
 }
+tasks.register('classes') {}
+tasks.register('testClasses') {}

@@ -6,6 +6,21 @@ spring:
     name: catalog-service
   config:
     import: "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+  data:
+    elasticsearch:
+      repositories:
+        enabled: ${SPRING_DATA_ELASTICSEARCH_REPOSITORIES_ENABLED:false}
+  kafka:
+    listener:
+      ack-mode: manual
 
 eureka:
   client:
@@ -20,3 +35,13 @@ management:
   endpoint:
     health:
       show-details: always
+
+security:
+  gateway-assertion:
+    public-key: "${GATEWAY_ASSERTION_PUBLIC_KEY:}"
+  internal-service-keys:
+    order-service: "${INTERNAL_KEY_ORDER:}"
+
+logging:
+  pattern:
+    correlation: "[%X{correlationId:-}] "
