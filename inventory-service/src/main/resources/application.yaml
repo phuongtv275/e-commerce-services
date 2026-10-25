@@ -6,6 +6,44 @@ spring:
     name: inventory-service
   config:
     import: "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+  kafka:
+    consumer:
+      group-id: inventory-reservation-group
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+    listener:
+      ack-mode: manual
+
+inventory:
+  kafka:
+    consumer-group: inventory-reservation-group
+    topic:
+      payment-succeeded: payment.succeeded
+      payment-failed: payment.failed
+      order-cancelled: order.cancelled
+    dlt:
+      payment-succeeded: inventory.payment-succeeded.dlt
+    consumer:
+      max-attempts: 3
+      initial-backoff-ms: 100
+      max-backoff-ms: 400
+  reservation:
+    ttl: 15m
+    expiry-interval-ms: 30000
+    expiry-initial-delay-ms: 10000
+    expiry-batch-size: 100
+  scheduler:
+    expiry-interval: 30000
+    expiry-initial-delay: 10000
+    expiry-batch-size: 100
 
 eureka:
   client:
@@ -19,4 +57,8 @@ management:
         include: health,info
   endpoint:
     health:
-      show-details: always
+      show-details: never
+
+logging:
+  pattern:
+    correlation: "[%X{correlationId:-}] "

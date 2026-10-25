@@ -16,7 +16,7 @@ Backend Microservices platform for multi-channel e-commerce system built with Sp
 | **api-gateway** | `8080` | Single Public Entrypoint, Centralized Routing, Header Sanitization, JWT Auth & Blacklist, RSA Assertion Signing (Audience Binding), Redis Rate Limiter, W3C CORS & Security Headers | Spring Cloud Gateway (WebFlux), Reactive Redis, Eureka Client |
 | **identity-service** | Internal (`8081`) | Authentication, Authorization, Users, IAM, Audit Logs, Inter-Service Auth (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`identity_db`), Redis Blacklist, Flyway |
 | **catalog-service** | Internal (`8082`) | Products, Categories, Brands, SKUs, Elasticsearch Search & Safe Reindexing (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`catalog_db`), Flyway, Elasticsearch 8.13, Spring Kafka |
-| **inventory-service** | Internal (`8083`) | Stock, Warehouses, Distributed Locks (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`inventory_db`), Redis |
+| **inventory-service** | Internal (`8083`) | Stock ledger, reservations, expiry and oversell-safe stock updates | Spring Boot WebMVC, PostgreSQL (`inventory_db`), Kafka |
 | **order-service** | Internal (`8084`) | Cart, Orders, Checkout (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`order_db`), Kafka |
 | **payment-service** | Internal (`8085`) | Payment Transactions, Refunds (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`payment_db`) |
 | **notification-service** | Internal (`8086`) | Email, SMS, Webhook Notifications (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`notification_db`), MailHog |
