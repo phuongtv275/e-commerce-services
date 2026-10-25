@@ -5,15 +5,24 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.UUID;
+
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@org.springframework.test.context.TestPropertySource(properties = {
-        "eureka.client.enabled=false"
+@TestPropertySource(properties = {
+        "eureka.client.enabled=false",
+        "spring.flyway.enabled=false",
+        "spring.jpa.hibernate.ddl-auto=none",
+        "spring.datasource.url=${INVENTORY_TEST_DB_URL:jdbc:postgresql://localhost:5432/inventory_db}",
+        "spring.datasource.username=postgres",
+        "spring.datasource.password=postgres"
 })
 class InventoryServiceNegativeTests {
 
@@ -21,9 +30,10 @@ class InventoryServiceNegativeTests {
     private MockMvc mockMvc;
 
     @Test
-    @DisplayName("Negative: Non-existent endpoint should return 404 Not Found")
-    void testNonExistentEndpointReturnsNotFound() throws Exception {
-        mockMvc.perform(get("/api/v1/non-existent-resource"))
-                .andExpect(status().isNotFound());
+    @DisplayName("Negative: Request real stock endpoint without authentication returns 401 Unauthorized")
+    void testUnauthenticatedStockRequestReturnsUnauthorized() throws Exception {
+        mockMvc.perform(get("/api/v1/inventory/stocks/" + UUID.randomUUID()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"));
     }
 }
