@@ -3,7 +3,7 @@
 Backend Microservices platform for multi-channel e-commerce system built with Spring Boot, Spring Cloud, Gradle, and Docker.
 
 - **Artifact Name:** `e-commerce-services`
-- **Version:** `0.1.14` (Semantic Versioning)
+- **Version:** `0.1.15` (Semantic Versioning)
 - **External Config Repository:** `../e-commerce-services-config`
 
 ---
@@ -15,7 +15,7 @@ Backend Microservices platform for multi-channel e-commerce system built with Sp
 | **common-library** | N/A | Shared Library: API Response, Global Exception, Tracing & Zero-Trust Filters, Transactional Outbox, Event Contracts, Idempotency | Plain Java Library (`java-library`), Java 21, Spring Boot BOM |
 | **api-gateway** | `8080` | Single Public Entrypoint, Centralized Routing, Header Sanitization, JWT Auth & Blacklist, RSA Assertion Signing (Audience Binding), Redis Rate Limiter, W3C CORS & Security Headers | Spring Cloud Gateway (WebFlux), Reactive Redis, Eureka Client |
 | **identity-service** | Internal (`8081`) | Authentication, Authorization, Users, IAM, Audit Logs, Inter-Service Auth (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`identity_db`), Redis Blacklist, Flyway |
-| **catalog-service** | Internal (`8082`) | Products, Categories, Search (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`catalog_db`), Elasticsearch |
+| **catalog-service** | Internal (`8082`) | Products, Categories, Brands, SKUs, Elasticsearch Search & Safe Reindexing (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`catalog_db`), Flyway, Elasticsearch 8.13, Spring Kafka |
 | **inventory-service** | Internal (`8083`) | Stock, Warehouses, Distributed Locks (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`inventory_db`), Redis |
 | **order-service** | Internal (`8084`) | Cart, Orders, Checkout (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`order_db`), Kafka |
 | **payment-service** | Internal (`8085`) | Payment Transactions, Refunds (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`payment_db`) |
@@ -26,6 +26,7 @@ Backend Microservices platform for multi-channel e-commerce system built with Sp
 | **Kafka Broker** | `9092` | Event Broker (KRaft Mode) | Confluent cp-kafka:7.4.0 (Internal: 29092, Host: 9092) |
 | **Kafka UI** | `8089` | Kafka Cluster Management UI | Provectus Kafka-UI |
 | **Redis** | `6379` | Cache & Distributed Locks | Redis 7.0 Alpine (`--requirepass rikkeiacademy`) |
+| **Redis Insight** | `5540` | Redis GUI Management Web UI | Redis Insight (`http://localhost:5540`) |
 | **Elasticsearch** | `9200` | Full-Text Search Engine | Elasticsearch 8.13.4 |
 | **MailHog** | `1025` / `8025` | Mock SMTP & Mail Web UI | MailHog (SMTP: 1025, Web: 8025) |
 
@@ -125,4 +126,20 @@ An automated shell script is provided to verify all 25 security and functional s
 bash /home/trgphun/.gemini/antigravity-cli/brain/a807e32a-a68d-4dfe-98f4-0e82fb87f635/scratch/test-identity-gateway-e2e.sh
 ```
 
+---
 
+## 7. Catalog Service Architecture (`catalog-service` v0.1.1)
+
+Catalog Service manages products, hierarchical categories, brands, SKUs, and provides full-text search with asynchronous Elasticsearch indexing and zero-trust internal endpoints.
+
+### Key Architectural Invariants
+- **Source of Truth & Schemas:** PostgreSQL (`catalog_db`) owns categories, brands, products, SKUs, product images, reindex jobs, and transactional outbox tables via Flyway migrations (`V1__init_catalog_schema.sql`).
+- **Deterministic Category Hierarchy:** Prevents reparenting cycles using transactional pessimistic locking (`findByIdForUpdate`). Public tree (`GET /api/v1/catalog/categories`) outputs only `ACTIVE` nodes sorted deterministically by `displayOrder ASC, name ASC, id ASC`.
+- **Transactional Outbox & Dual-Write Prevention:** All product mutations atomically record `CatalogProductChangedEvent` (with aggregate revision timestamps) to `outbox_events` in the same database transaction, published to Kafka `catalog.product.changed`.
+- **Versioned Elasticsearch Read Model:** Kafka consumers (`CatalogProductEventConsumer`) idempotently synchronize products and active SKUs into Elasticsearch index alias `product_catalog`. Stale event deliveries (`aggregateRevision <= existingRevision`) are discarded.
+- **Stock Read Model Isolation:** Catalog consumes versioned `inventory.stock.changed` events (`InventoryStockEventConsumer`) with monotonic version guards. Persists stock state in a PostgreSQL read model (`sku_stock_snapshots`) to preserve out-of-order stock events before initial document indexing; no unknown state overwrites newer known inventory versions. Synchronous queries from Catalog to Inventory are strictly prohibited.
+- **Resilient Search & Deep Pagination Protection:** `GET /api/v1/catalog/search` supports multi-match full-text querying, filters, and deterministic tie-breaking on `skuId ASC`. Offset pagination is capped at `(page + 1) * size <= 200`. Deeper paging requires opaque Base64 URL-safe SHA-256 fingerprint search cursors backed by Elasticsearch Point-In-Time (PIT) with 1-minute keepalive.
+- **Graceful Fallback:** If Elasticsearch becomes unreachable, Catalog automatically falls back to PostgreSQL querying (`source = "postgres-fallback"`), rejecting unsupported cursor pagination or unmaterialized stock filtering with `503 UPSTREAM_UNAVAILABLE`.
+- **Zero-Downtime Reindexing:** Admin-triggered reindexing (`POST /api/v1/catalog/admin/reindex`) writes to a new physical index (`product_catalog-v<timestamp>`) and atomically swaps the alias upon complete verification without downtime. If an error occurs, the live alias remains intact.
+- **Inter-Service Security Boundary:** SKU lookup (`GET /internal/catalog/skus/{skuId}`) and batch querying (`POST /internal/catalog/skus/batch`) enforce `InternalServiceFilter` with caller key validation for `order-service` (`ROLE_SERVICE_ORDER`). Gateway assertions on internal routes are strictly blocked with 403.
+- **Automated Verification:** 161 positive and negative automated tests covering domain rules, schema constraints, idempotency, security chains, search/fallback, durable stock read models, and reindex workflows.

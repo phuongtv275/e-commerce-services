@@ -84,4 +84,69 @@ class EventContractSerializationTests {
         assertEquals("RESERVATION_EXPIRED_ORDER_CANCELLED", deserialized.getLateSuccessReason());
         assertEquals("VNPAY-TRANS-888", deserialized.getProviderPaymentId());
     }
+
+    @Test
+    @DisplayName("Positive: Serialize & Deserialize CatalogProductChangedEvent with topic catalog.product.changed and aggregateRevision")
+    void testCatalogProductChangedEventSerialization_Positive() throws Exception {
+        UUID productId = UUID.randomUUID();
+        CatalogProductChangedEvent event = CatalogProductChangedEvent.builder()
+                .productId(productId)
+                .sku("SKU-TEST-001")
+                .name("Test Product")
+                .status("ACTIVE")
+                .action("CREATED")
+                .aggregateRevision(1L)
+                .correlationId("test-corr-cat-1")
+                .build();
+
+        String json = objectMapper.writeValueAsString(event);
+        assertNotNull(json);
+
+        CatalogProductChangedEvent deserialized = objectMapper.readValue(json, CatalogProductChangedEvent.class);
+        assertEquals(event.getEventId(), deserialized.getEventId());
+        assertEquals("catalog.product.changed", deserialized.getEventType());
+        assertEquals(productId, deserialized.getProductId());
+        assertEquals(1L, deserialized.getAggregateRevision());
+        assertEquals("catalog-service", deserialized.getProducer());
+        assertEquals("CREATED", deserialized.getAction());
+    }
+
+    @Test
+    @DisplayName("Negative: CatalogProductChangedEvent deserialization with invalid JSON should fail")
+    void testCatalogProductChangedEventSerialization_Negative_InvalidJson() {
+        String invalidJson = "{ \"productId\": \"not-a-uuid\", \"aggregateRevision\": \"not-a-number\" }";
+        assertThrows(Exception.class, () -> objectMapper.readValue(invalidJson, CatalogProductChangedEvent.class));
+    }
+
+    @Test
+    @DisplayName("Positive: Serialize & Deserialize InventoryStockChangedEvent with topic inventory.stock.changed")
+    void testInventoryStockChangedEventSerialization_Positive() throws Exception {
+        UUID skuId = UUID.randomUUID();
+        InventoryStockChangedEvent event = InventoryStockChangedEvent.builder()
+                .skuId(skuId)
+                .availableQuantity(15)
+                .version(10L)
+                .inStock(true)
+                .correlationId("test-corr-stock-1")
+                .build();
+
+        String json = objectMapper.writeValueAsString(event);
+        assertNotNull(json);
+
+        InventoryStockChangedEvent deserialized = objectMapper.readValue(json, InventoryStockChangedEvent.class);
+        assertEquals(event.getEventId(), deserialized.getEventId());
+        assertEquals("inventory.stock.changed", deserialized.getEventType());
+        assertEquals(skuId, deserialized.getSkuId());
+        assertEquals(15, deserialized.getAvailableQuantity());
+        assertEquals(10L, deserialized.getVersion());
+        assertTrue(deserialized.getInStock());
+        assertEquals("inventory-service", deserialized.getProducer());
+    }
+
+    @Test
+    @DisplayName("Negative: InventoryStockChangedEvent deserialization with invalid JSON should fail")
+    void testInventoryStockChangedEventSerialization_Negative_InvalidJson() {
+        String invalidJson = "{ \"skuId\": \"not-a-uuid\", \"version\": \"not-a-number\" }";
+        assertThrows(Exception.class, () -> objectMapper.readValue(invalidJson, InventoryStockChangedEvent.class));
+    }
 }

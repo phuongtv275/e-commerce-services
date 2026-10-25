@@ -14,7 +14,7 @@ public class CatalogProductChangedEvent implements DomainEvent {
     @Builder.Default
     private UUID eventId = UUID.randomUUID();
     @Builder.Default
-    private String eventType = "catalog.product-changed";
+    private String eventType = "catalog.product.changed";
     @Builder.Default
     private int eventVersion = 1;
     @Builder.Default
@@ -25,6 +25,7 @@ public class CatalogProductChangedEvent implements DomainEvent {
 
     // Business Payload
     private UUID productId;
+    private Long aggregateRevision;
     private String sku;
     private String name;
     private String status;
