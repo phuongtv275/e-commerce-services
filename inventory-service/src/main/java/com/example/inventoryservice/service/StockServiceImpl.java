@@ -17,10 +17,15 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import jakarta.persistence.criteria.Predicate;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -58,11 +63,33 @@ public class StockServiceImpl implements StockService {
     @Override
     @Transactional(readOnly = true)
     public Page<StockMovementView> movements(UUID skuId, UUID warehouseId, Pageable pageable) {
+        return movements(skuId, warehouseId, null, null, null, pageable);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<StockMovementView> movements(UUID skuId, UUID warehouseId, Instant from, Instant to, MovementType movementType, Pageable pageable) {
         if (skuId == null) {
             throw new ValidationException("skuId is required");
         }
         Warehouse warehouse = resolveWarehouse(warehouseId);
-        return stockMovementRepository.findBySkuIdAndWarehouseId(skuId, warehouse.getId(), pageable)
+        Specification<StockMovement> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.equal(root.get("skuId"), skuId));
+            predicates.add(cb.equal(root.get("warehouse").get("id"), warehouse.getId()));
+            if (from != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("occurredAt"), from));
+            }
+            if (to != null) {
+                predicates.add(cb.lessThanOrEqualTo(root.get("occurredAt"), to));
+            }
+            if (movementType != null) {
+                predicates.add(cb.equal(root.get("movementType"), movementType));
+            }
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        return stockMovementRepository.findAll(spec, pageable)
                 .map(m -> new StockMovementView(
                         m.getId(),
                         m.getSkuId(),
@@ -106,16 +133,24 @@ public class StockServiceImpl implements StockService {
 
         Warehouse warehouse = resolveWarehouse(command.warehouseId());
 
+        // Advisory transaction lock keyed by referenceId to serialize concurrent requests with the same reference
+        stockMovementRepository.acquireAdvisoryLock(command.referenceId());
+
         // ReferenceId idempotency check
-        Optional<StockMovement> existingMovement = stockMovementRepository
-                .findByReferenceTypeAndReferenceIdAndSkuId("ADJUSTMENT", command.referenceId(), command.skuId());
-        if (existingMovement.isPresent()) {
-            StockMovement prev = existingMovement.get();
-            if (prev.getQuantityDelta() == command.quantityDelta()) {
+        List<StockMovement> existingMovements = stockMovementRepository
+                .findByReferenceTypeAndReferenceId("ADJUSTMENT", command.referenceId());
+        if (!existingMovements.isEmpty()) {
+            StockMovement prev = existingMovements.get(0);
+            boolean sameSku = prev.getSkuId().equals(command.skuId());
+            boolean sameWarehouse = prev.getWarehouse().getId().equals(warehouse.getId());
+            boolean sameDelta = prev.getQuantityDelta() == command.quantityDelta();
+            boolean sameReason = Objects.equals(prev.getReason(), command.reason());
+
+            if (sameSku && sameWarehouse && sameDelta && sameReason) {
                 return get(command.skuId(), warehouse.getId());
             } else {
                 throw new ConflictException(ErrorCode.STATE_CONFLICT,
-                        "Reference ID already used with different payload for this SKU");
+                        "Reference ID already used with different payload (sku, warehouse, delta, or reason)");
             }
         }
 

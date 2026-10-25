@@ -1,10 +1,12 @@
 package com.example.inventoryservice.controller;
 
+import com.ecommerce.common.exception.ValidationException;
 import com.ecommerce.common.response.ApiResponse;
 import com.ecommerce.common.response.PagedResponse;
 import com.example.inventoryservice.dto.StockAdjustmentRequest;
 import com.example.inventoryservice.dto.StockBalanceResponse;
 import com.example.inventoryservice.dto.StockMovementResponse;
+import com.example.inventoryservice.entity.MovementType;
 import com.example.inventoryservice.service.StockAdjustmentCommand;
 import com.example.inventoryservice.service.StockBalance;
 import com.example.inventoryservice.service.StockMovementView;
@@ -15,11 +17,14 @@ import org.slf4j.MDC;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.UUID;
 
 @RestController
@@ -67,8 +72,20 @@ public class StockController {
     public ResponseEntity<ApiResponse<PagedResponse<StockMovementResponse>>> getMovements(
             @PathVariable UUID skuId,
             @RequestParam(required = false) UUID warehouseId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
+            @RequestParam(required = false) MovementType movementType,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
+
+        if (from != null && to != null) {
+            if (from.isAfter(to)) {
+                throw new ValidationException("from must not be after to");
+            }
+            if (Duration.between(from, to).compareTo(Duration.ofDays(90)) > 0) {
+                throw new ValidationException("Date range must not exceed 90 days");
+            }
+        }
 
         int validPage = Math.max(page, 0);
         int validSize = Math.min(Math.max(size, 1), 100);
@@ -76,6 +93,9 @@ public class StockController {
         Page<StockMovementView> pageResult = stockService.movements(
                 skuId,
                 warehouseId,
+                from,
+                to,
+                movementType,
                 PageRequest.of(validPage, validSize, Sort.by(Sort.Direction.DESC, "occurredAt", "id"))
         );
 

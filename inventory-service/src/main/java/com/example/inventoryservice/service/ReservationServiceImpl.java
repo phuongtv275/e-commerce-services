@@ -69,29 +69,7 @@ public class ReservationServiceImpl implements ReservationService {
         // Check if reservation exists for this orderId
         Optional<Reservation> existingOpt = reservationRepository.findByOrderId(orderId);
         if (existingOpt.isPresent()) {
-            Reservation existing = existingOpt.get();
-            if (existing.getStatus() == ReservationStatus.PENDING) {
-                Map<UUID, Integer> existingItemsMap = existing.getItems().stream()
-                        .collect(Collectors.toMap(ReservationItem::getSkuId, ReservationItem::getQuantity));
-                if (existingItemsMap.equals(consolidated)) {
-                    List<ReservationItemCommand> existingCommands = existing.getItems().stream()
-                            .map(i -> new ReservationItemCommand(i.getSkuId(), i.getQuantity()))
-                            .toList();
-                    return new ReservationResult(
-                            existing.getId(),
-                            existing.getOrderId(),
-                            existing.getStatus().name(),
-                            existing.getExpiresAt(),
-                            existingCommands
-                    );
-                } else {
-                    throw new ConflictException(ErrorCode.STATE_CONFLICT,
-                            "Reservation for orderId " + orderId + " already exists with different items");
-                }
-            } else {
-                throw new ConflictException(ErrorCode.STATE_CONFLICT,
-                        "Reservation for orderId " + orderId + " is in terminal state: " + existing.getStatus());
-            }
+            return replayOrConflict(existingOpt.get(), consolidated, orderId);
         }
 
         Warehouse warehouse = warehouseRepository.findFirstByIsDefaultTrueAndStatus(WarehouseStatus.ACTIVE)
@@ -105,16 +83,21 @@ public class ReservationServiceImpl implements ReservationService {
         Instant now = Instant.now();
         Instant expiresAt = now.plus(reservationTtl != null ? reservationTtl : Duration.ofMinutes(15));
 
-        Reservation reservation = Reservation.builder()
-                .orderId(orderId)
-                .warehouse(warehouse)
-                .status(ReservationStatus.PENDING)
-                .expiresAt(expiresAt)
-                .correlationId(correlationId)
-                .createdAt(now)
-                .items(new ArrayList<>())
-                .build();
-        reservation = reservationRepository.save(reservation);
+        UUID reservationId = UUID.randomUUID();
+        int inserted = reservationRepository.insertIfNotExists(
+                reservationId, orderId, warehouse.getId(), ReservationStatus.PENDING.name(), expiresAt, correlationId, now
+        );
+        if (inserted == 0) {
+            Reservation existing = reservationRepository.findByOrderId(orderId)
+                    .orElseThrow(() -> new ConflictException(ErrorCode.STATE_CONFLICT,
+                            "Concurrent reservation in progress for orderId " + orderId));
+            return replayOrConflict(existing, consolidated, orderId);
+        }
+
+        Reservation reservation = reservationRepository.findById(reservationId).orElseThrow();
+        if (reservation.getItems() == null) {
+            reservation.setItems(new ArrayList<>());
+        }
 
         for (ReservationItemCommand item : sortedItems) {
             int rows = stockRepository.reserveStock(item.skuId(), warehouse.getId(), item.quantity(), now);
@@ -273,11 +256,58 @@ public class ReservationServiceImpl implements ReservationService {
         }
 
         Instant now = Instant.now();
+        if (reservation.getExpiresAt() != null && reservation.getExpiresAt().isBefore(now)) {
+            boolean expired = expireSingle(reservation.getId(), now);
+            if (expired) {
+                outboxService.recordReservationCommitFailedEvent(
+                        reservation.getId(), orderId, "RESERVATION_EXPIRED", correlationId);
+                log.info("Reservation for orderId {} was PENDING but expired at {}, released and recorded commit failed",
+                        orderId, reservation.getExpiresAt());
+                return;
+            }
+            Reservation current = reservationRepository.findById(reservation.getId()).orElseThrow();
+            if (current.getStatus() == ReservationStatus.COMMITTED) {
+                log.info("Reservation for orderId {} committed concurrently during expiry check; no commit-failed event", orderId);
+                return;
+            }
+            if (current.getStatus() == ReservationStatus.EXPIRED || current.getStatus() == ReservationStatus.RELEASED) {
+                String failReason = (current.getStatus() == ReservationStatus.EXPIRED)
+                        ? "RESERVATION_EXPIRED" : "RESERVATION_ALREADY_RELEASED";
+                outboxService.recordReservationCommitFailedEvent(current.getId(), orderId, failReason, correlationId);
+                return;
+            }
+            throw new ConflictException(ErrorCode.STATE_CONFLICT,
+                    "Failed to expire or commit reservation, current state: " + current.getStatus());
+        }
         int rows = reservationRepository.transitionToCommitted(reservation.getId(), now);
         if (rows == 0) {
             Reservation current = reservationRepository.findById(reservation.getId()).orElseThrow();
             if (current.getStatus() == ReservationStatus.COMMITTED) {
                 return;
+            }
+            if (current.getStatus() == ReservationStatus.EXPIRED || current.getStatus() == ReservationStatus.RELEASED) {
+                String failReason = (current.getStatus() == ReservationStatus.EXPIRED)
+                        ? "RESERVATION_EXPIRED" : "RESERVATION_ALREADY_RELEASED";
+                outboxService.recordReservationCommitFailedEvent(current.getId(), orderId, failReason, correlationId);
+                return;
+            }
+            if (current.getStatus() == ReservationStatus.PENDING && current.getExpiresAt() != null && !current.getExpiresAt().isAfter(now)) {
+                boolean expired = expireSingle(current.getId(), now);
+                if (expired) {
+                    outboxService.recordReservationCommitFailedEvent(current.getId(), orderId, "RESERVATION_EXPIRED", correlationId);
+                    log.info("Reservation for orderId {} was PENDING but expired at commit CAS, released stock and recorded commit failed", orderId);
+                    return;
+                }
+                Reservation reloaded = reservationRepository.findById(current.getId()).orElseThrow();
+                if (reloaded.getStatus() == ReservationStatus.COMMITTED) {
+                    return;
+                }
+                if (reloaded.getStatus() == ReservationStatus.EXPIRED || reloaded.getStatus() == ReservationStatus.RELEASED) {
+                    String failReason = (reloaded.getStatus() == ReservationStatus.EXPIRED)
+                            ? "RESERVATION_EXPIRED" : "RESERVATION_ALREADY_RELEASED";
+                    outboxService.recordReservationCommitFailedEvent(reloaded.getId(), orderId, failReason, correlationId);
+                    return;
+                }
             }
             throw new ConflictException(ErrorCode.STATE_CONFLICT,
                     "Failed to commit reservation, current state: " + current.getStatus());
@@ -473,6 +503,22 @@ public class ReservationServiceImpl implements ReservationService {
 
         outboxService.recordReservationCommitFailedEvent(null, orderId, reason, correlationId);
         log.warn("Quarantined commit failure for orderId {}: {}", orderId, reason);
+    }
+
+    private ReservationResult replayOrConflict(Reservation existing, Map<UUID, Integer> consolidated, UUID orderId) {
+        if (existing.getStatus() == ReservationStatus.PENDING) {
+            Map<UUID, Integer> existingItemsMap = existing.getItems().stream()
+                    .collect(Collectors.toMap(ReservationItem::getSkuId, ReservationItem::getQuantity));
+            if (existingItemsMap.equals(consolidated)) {
+                return toResult(existing);
+            } else {
+                throw new ConflictException(ErrorCode.STATE_CONFLICT,
+                        "Reservation for orderId " + orderId + " already exists with different items");
+            }
+        } else {
+            throw new ConflictException(ErrorCode.STATE_CONFLICT,
+                    "Reservation for orderId " + orderId + " is in terminal state: " + existing.getStatus());
+        }
     }
 
     private ReservationResult toResult(Reservation reservation) {

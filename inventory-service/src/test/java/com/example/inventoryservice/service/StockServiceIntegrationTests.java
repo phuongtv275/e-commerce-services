@@ -6,7 +6,9 @@ import com.ecommerce.common.exception.ConflictException;
 import com.ecommerce.common.exception.ValidationException;
 import com.ecommerce.common.outbox.OutboxEvent;
 import com.ecommerce.common.outbox.OutboxEventRepository;
+import com.example.inventoryservice.entity.MovementType;
 import com.example.inventoryservice.entity.Stock;
+import com.example.inventoryservice.entity.StockMovement;
 import com.example.inventoryservice.entity.Warehouse;
 import com.example.inventoryservice.entity.WarehouseStatus;
 import com.example.inventoryservice.repository.StockMovementRepository;
@@ -24,8 +26,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -198,5 +202,146 @@ class StockServiceIntegrationTests {
         StockAdjustmentCommand cmd = new StockAdjustmentCommand(skuId, defaultWarehouse.getId(), 0, "ref-zero", "Zero delta");
         assertThatThrownBy(() -> stockService.adjust(cmd, "admin", "c1"))
                 .isInstanceOf(ValidationException.class);
+    }
+
+    @Test
+    @DisplayName("Regression: Adjustment replay with different warehouse throws ConflictException")
+    void testAdjustmentReplay_DifferentWarehouse_ThrowsConflict() {
+        UUID skuId = UUID.randomUUID();
+        String refId = "ref-diff-wh-" + UUID.randomUUID();
+        stockService.adjust(new StockAdjustmentCommand(skuId, defaultWarehouse.getId(), 10, refId, "Initial"), "admin", "c1");
+
+        // Create a secondary active warehouse
+        Warehouse secondWarehouse = warehouseRepository.save(Warehouse.builder()
+                .name("Second WH " + UUID.randomUUID())
+                .code("WH_SEC_" + UUID.randomUUID().toString().substring(0, 8))
+                .isDefault(false)
+                .status(WarehouseStatus.ACTIVE)
+                .build());
+
+        StockAdjustmentCommand conflictWhCmd = new StockAdjustmentCommand(skuId, secondWarehouse.getId(), 10, refId, "Initial");
+        assertThatThrownBy(() -> stockService.adjust(conflictWhCmd, "admin", "c2"))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("different payload");
+    }
+
+    @Test
+    @DisplayName("Regression: Adjustment replay with different reason throws ConflictException")
+    void testAdjustmentReplay_DifferentReason_ThrowsConflict() {
+        UUID skuId = UUID.randomUUID();
+        String refId = "ref-diff-reason-" + UUID.randomUUID();
+        stockService.adjust(new StockAdjustmentCommand(skuId, defaultWarehouse.getId(), 10, refId, "Reason A"), "admin", "c1");
+
+        StockAdjustmentCommand conflictReasonCmd = new StockAdjustmentCommand(skuId, defaultWarehouse.getId(), 10, refId, "Reason B");
+        assertThatThrownBy(() -> stockService.adjust(conflictReasonCmd, "admin", "c2"))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("different payload");
+    }
+
+    @Test
+    @DisplayName("Regression: Adjustment replay with different SKU throws ConflictException")
+    void testAdjustmentReplay_DifferentSku_ThrowsConflict() {
+        UUID sku1 = UUID.randomUUID();
+        UUID sku2 = UUID.randomUUID();
+        String refId = "ref-diff-sku-" + UUID.randomUUID();
+        stockService.adjust(new StockAdjustmentCommand(sku1, defaultWarehouse.getId(), 10, refId, "Reason"), "admin", "c1");
+
+        StockAdjustmentCommand conflictSkuCmd = new StockAdjustmentCommand(sku2, defaultWarehouse.getId(), 10, refId, "Reason");
+        assertThatThrownBy(() -> stockService.adjust(conflictSkuCmd, "admin", "c2"))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("different payload");
+    }
+
+    @Test
+    @DisplayName("Positive: Querying movements with narrow from/to and type returns only matching result")
+    void testMovementsFiltering_ByDateAndType_ReturnsFilteredResults() throws Exception {
+        UUID skuId = UUID.randomUUID();
+        Instant beforeFirst = Instant.now();
+        Thread.sleep(10);
+        stockService.adjust(new StockAdjustmentCommand(skuId, defaultWarehouse.getId(), 20, "ref-filter-1-" + UUID.randomUUID(), "Inbound init"), "admin", "c1");
+        Instant afterFirst = Instant.now();
+        Thread.sleep(10);
+        stockService.adjust(new StockAdjustmentCommand(skuId, defaultWarehouse.getId(), -5, "ref-filter-2-" + UUID.randomUUID(), "Adjustment decrease"), "admin", "c2");
+        Instant afterSecond = Instant.now();
+
+        // Total movements for sku is 2
+        Page<StockMovementView> allMovements = stockService.movements(skuId, defaultWarehouse.getId(), PageRequest.of(0, 10));
+        assertThat(allMovements.getContent()).hasSize(2);
+
+        // Filter by movementType = INBOUND
+        Page<StockMovementView> inboundOnly = stockService.movements(skuId, defaultWarehouse.getId(), null, null, MovementType.INBOUND, PageRequest.of(0, 10));
+        assertThat(inboundOnly.getContent()).hasSize(1);
+        assertThat(inboundOnly.getContent().get(0).movementType()).isEqualTo("INBOUND");
+        assertThat(inboundOnly.getContent().get(0).quantityDelta()).isEqualTo(20);
+
+        // Filter by movementType = ADJUSTMENT
+        Page<StockMovementView> adjustmentOnly = stockService.movements(skuId, defaultWarehouse.getId(), null, null, MovementType.ADJUSTMENT, PageRequest.of(0, 10));
+        assertThat(adjustmentOnly.getContent()).hasSize(1);
+        assertThat(adjustmentOnly.getContent().get(0).movementType()).isEqualTo("ADJUSTMENT");
+        assertThat(adjustmentOnly.getContent().get(0).quantityDelta()).isEqualTo(-5);
+
+        // Filter by narrow from/to covering only the first movement
+        Page<StockMovementView> dateFiltered = stockService.movements(skuId, defaultWarehouse.getId(), beforeFirst, afterFirst, null, PageRequest.of(0, 10));
+        assertThat(dateFiltered.getContent()).hasSize(1);
+        assertThat(dateFiltered.getContent().get(0).movementType()).isEqualTo("INBOUND");
+
+        // Filter by narrow from/to and movementType combined
+        Page<StockMovementView> combined = stockService.movements(skuId, defaultWarehouse.getId(), afterFirst, afterSecond, MovementType.ADJUSTMENT, PageRequest.of(0, 10));
+        assertThat(combined.getContent()).hasSize(1);
+        assertThat(combined.getContent().get(0).movementType()).isEqualTo("ADJUSTMENT");
+    }
+
+    @Test
+    @DisplayName("Regression: Concurrent identical stock adjustments replay with one stock delta and one movement without unique constraint error")
+    void testConcurrentIdenticalAdjustments_SingleMovementAndNoUniqueConstraintError() throws Exception {
+        UUID skuId = UUID.randomUUID();
+        String refId = "ref-conc-adj-" + UUID.randomUUID();
+        StockAdjustmentCommand cmd = new StockAdjustmentCommand(skuId, defaultWarehouse.getId(), 15, refId, "Concurrent inbound");
+
+        int threadCount = 4;
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch endLatch = new CountDownLatch(threadCount);
+        List<Throwable> exceptions = new CopyOnWriteArrayList<>();
+        List<StockBalance> results = new CopyOnWriteArrayList<>();
+
+        for (int i = 0; i < threadCount; i++) {
+            executor.submit(() -> {
+                try {
+                    startLatch.await();
+                    StockBalance balance = stockService.adjust(cmd, "admin", "c-conc-adj");
+                    results.add(balance);
+                } catch (Throwable t) {
+                    exceptions.add(t);
+                } finally {
+                    endLatch.countDown();
+                }
+            });
+        }
+
+        startLatch.countDown();
+        boolean completed = endLatch.await(10, TimeUnit.SECONDS);
+        executor.shutdown();
+
+        assertThat(completed).isTrue();
+        assertThat(exceptions).isEmpty();
+        assertThat(results).hasSize(threadCount);
+
+        // All threads get identical balance (onHand = 15, available = 15)
+        for (StockBalance b : results) {
+            assertThat(b.onHand()).isEqualTo(15);
+            assertThat(b.available()).isEqualTo(15);
+        }
+
+        // Final stock row in DB has exactly 15 on hand
+        Stock stock = stockRepository.findBySkuIdAndWarehouseId(skuId, defaultWarehouse.getId()).orElseThrow();
+        assertThat(stock.getOnHand()).isEqualTo(15);
+        assertThat(stock.getReserved()).isEqualTo(0);
+        assertThat(stock.getAvailableQuantity()).isEqualTo(15);
+
+        // Exactly one movement created in DB
+        List<StockMovement> movements = stockMovementRepository.findByReferenceTypeAndReferenceId("ADJUSTMENT", refId);
+        assertThat(movements).hasSize(1);
+        assertThat(movements.get(0).getQuantityDelta()).isEqualTo(15);
     }
 }

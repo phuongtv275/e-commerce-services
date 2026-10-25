@@ -31,6 +31,8 @@ inventory:
       order-cancelled: order.cancelled
     dlt:
       payment-succeeded: inventory.payment-succeeded.dlt
+      payment-failed: inventory.payment-failed.dlt
+      order-cancelled: inventory.order-cancelled.dlt
     consumer:
       max-attempts: 3
       initial-backoff-ms: 100

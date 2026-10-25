@@ -19,10 +19,24 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID> 
 
     @Modifying(clearAutomatically = true)
     @Query(value = """
+            INSERT INTO reservations (id, order_id, warehouse_id, status, expires_at, correlation_id, created_at)
+            VALUES (:id, :orderId, :warehouseId, :status, :expiresAt, :correlationId, :createdAt)
+            ON CONFLICT (order_id) DO NOTHING
+            """, nativeQuery = true)
+    int insertIfNotExists(@Param("id") UUID id,
+                          @Param("orderId") UUID orderId,
+                          @Param("warehouseId") UUID warehouseId,
+                          @Param("status") String status,
+                          @Param("expiresAt") Instant expiresAt,
+                          @Param("correlationId") String correlationId,
+                          @Param("createdAt") Instant createdAt);
+
+    @Modifying(clearAutomatically = true)
+    @Query(value = """
             UPDATE reservations
             SET status = 'COMMITTED',
                 committed_at = :now
-            WHERE id = :id AND status = 'PENDING'
+            WHERE id = :id AND status = 'PENDING' AND expires_at > :now
             """, nativeQuery = true)
     int transitionToCommitted(@Param("id") UUID id, @Param("now") Instant now);
 

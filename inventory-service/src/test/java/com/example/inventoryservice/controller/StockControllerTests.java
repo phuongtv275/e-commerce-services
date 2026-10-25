@@ -2,6 +2,7 @@ package com.example.inventoryservice.controller;
 
 import com.ecommerce.common.exception.ResourceNotFoundException;
 import com.example.inventoryservice.dto.StockAdjustmentRequest;
+import com.example.inventoryservice.entity.MovementType;
 import com.example.inventoryservice.service.StockAdjustmentCommand;
 import com.example.inventoryservice.service.StockBalance;
 import com.example.inventoryservice.service.StockMovementView;
@@ -100,7 +101,7 @@ class StockControllerTests {
                 UUID.randomUUID(), skuId, warehouseId, "INBOUND", 10, "ADJUSTMENT", "ref-1",
                 0, 10, 0, 0, "staffUser", "Initial", "corr-1", Instant.now()
         );
-        when(stockService.movements(eq(skuId), any(), any()))
+        when(stockService.movements(eq(skuId), any(), any(), any(), any(), any()))
                 .thenReturn(new PageImpl<>(List.of(view), PageRequest.of(0, 20), 1));
 
         mockMvc.perform(get("/api/v1/inventory/stocks/" + skuId + "/movements")
@@ -109,6 +110,35 @@ class StockControllerTests {
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.content[0].movementType").value("INBOUND"))
                 .andExpect(jsonPath("$.data.content[0].quantityDelta").value(10));
+    }
+
+    @Test
+    @DisplayName("Positive: Staff can query movements with from, to, and movementType filters")
+    void testGetMovements_WithFilters_PassedToService() throws Exception {
+        UUID skuId = UUID.randomUUID();
+        UUID warehouseId = UUID.randomUUID();
+        Instant from = Instant.parse("2026-01-01T00:00:00Z");
+        Instant to = Instant.parse("2026-01-30T00:00:00Z");
+        MovementType movementType = MovementType.INBOUND;
+
+        StockMovementView view = new StockMovementView(
+                UUID.randomUUID(), skuId, warehouseId, "INBOUND", 10, "ADJUSTMENT", "ref-1",
+                0, 10, 0, 0, "staffUser", "Initial", "corr-1", from.plusSeconds(3600)
+        );
+        when(stockService.movements(eq(skuId), eq(warehouseId), eq(from), eq(to), eq(movementType), any()))
+                .thenReturn(new PageImpl<>(List.of(view), PageRequest.of(0, 20), 1));
+
+        mockMvc.perform(get("/api/v1/inventory/stocks/" + skuId + "/movements")
+                        .param("warehouseId", warehouseId.toString())
+                        .param("from", "2026-01-01T00:00:00Z")
+                        .param("to", "2026-01-30T00:00:00Z")
+                        .param("movementType", "INBOUND")
+                        .with(user("staffUser").roles("INVENTORY_STAFF")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.content[0].movementType").value("INBOUND"));
+
+        org.mockito.Mockito.verify(stockService).movements(eq(skuId), eq(warehouseId), eq(from), eq(to), eq(movementType), any());
     }
 
     @Test
@@ -166,6 +196,32 @@ class StockControllerTests {
                         .with(user("staffUser").roles("INVENTORY_STAFF"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(invalidReq)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    @DisplayName("Negative: Movements query with date range exceeding 90 days returns 400 VALIDATION_ERROR")
+    void testGetMovements_RangeExceeds90Days_BadRequest() throws Exception {
+        UUID skuId = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/v1/inventory/stocks/" + skuId + "/movements")
+                        .param("from", "2026-01-01T00:00:00Z")
+                        .param("to", "2026-05-01T00:00:00Z")
+                        .with(user("staffUser").roles("INVENTORY_STAFF")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    @DisplayName("Negative: Movements query with from after to returns 400 VALIDATION_ERROR")
+    void testGetMovements_FromAfterTo_BadRequest() throws Exception {
+        UUID skuId = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/v1/inventory/stocks/" + skuId + "/movements")
+                        .param("from", "2026-02-01T00:00:00Z")
+                        .param("to", "2026-01-01T00:00:00Z")
+                        .with(user("staffUser").roles("INVENTORY_STAFF")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
     }

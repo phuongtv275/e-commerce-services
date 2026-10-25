@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -21,12 +22,19 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest
 @org.junit.jupiter.api.condition.EnabledIf("isPostgresAvailable")
@@ -429,5 +437,156 @@ class ReservationServiceIntegrationTests {
         // Configured inventory.reservation.ttl is 10s. If still hardcoded to 15m, this will fail.
         assertThat(result.expiresAt()).isNotNull();
         assertThat(result.expiresAt()).isBetween(before.plus(Duration.ofSeconds(8)), after.plus(Duration.ofSeconds(12)));
+    }
+
+    @Test
+    @DisplayName("Regression: Commit on PENDING reservation that has passed expiresAt must expire stock and emit commit-failed event, not commit")
+    void testCommitOnPendingReservation_PastExpiresAt_ExpiresAndEmitsCommitFailed() {
+        UUID skuId = UUID.randomUUID();
+        stockService.adjust(new StockAdjustmentCommand(skuId, defaultWarehouse.getId(), 10, "ref-" + UUID.randomUUID(), "Init"), "admin", "c-late");
+
+        UUID orderId = UUID.randomUUID();
+        reservationService.reserve(orderId, List.of(new ReservationItemCommand(skuId, 4)), "c-late");
+
+        Reservation res = reservationRepository.findByOrderId(orderId).orElseThrow();
+        // Backdate expires_at to 10 minutes ago, keeping status PENDING
+        res.setExpiresAt(Instant.now().minus(10, ChronoUnit.MINUTES));
+        reservationRepository.saveAndFlush(res);
+
+        // Commit is called when expiresAt < now
+        reservationService.commit(orderId, "c-late-commit");
+
+        // Verify reservation was transitioned to EXPIRED, not COMMITTED
+        Reservation updated = reservationRepository.findByOrderId(orderId).orElseThrow();
+        assertThat(updated.getStatus()).isEqualTo(ReservationStatus.EXPIRED);
+
+        // Verify stock was released, not committed (on_hand remains 10, reserved is 0, available is 10)
+        StockBalance balance = stockService.get(skuId, defaultWarehouse.getId());
+        assertThat(balance.onHand()).isEqualTo(10);
+        assertThat(balance.reserved()).isEqualTo(0);
+        assertThat(balance.available()).isEqualTo(10);
+
+        // Verify commit failed outbox event was recorded
+        List<OutboxEvent> outboxList = outboxEventRepository.findAll().stream()
+                .filter(e -> "RESERVATION".equals(e.getAggregateType()) && res.getId().toString().equals(e.getAggregateId()))
+                .toList();
+        boolean hasCommitFailed = outboxList.stream()
+                .anyMatch(e -> "inventory.reservation-commit-failed".equals(e.getEventType()));
+        assertThat(hasCommitFailed).isTrue();
+    }
+
+    @Test
+    @DisplayName("Regression: Concurrent reserve requests with same orderId do not leak unique constraint DB error")
+    void testConcurrentReserveWithSameOrderId_NoUniqueConstraintError() throws Exception {
+        UUID skuId = UUID.randomUUID();
+        stockService.adjust(new StockAdjustmentCommand(skuId, defaultWarehouse.getId(), 50, "ref-" + UUID.randomUUID(), "Init"), "admin", "c-conc");
+
+        UUID orderId = UUID.randomUUID();
+        List<ReservationItemCommand> items = List.of(new ReservationItemCommand(skuId, 2));
+
+        int threadCount = 4;
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch endLatch = new CountDownLatch(threadCount);
+        List<Throwable> exceptions = new CopyOnWriteArrayList<>();
+        List<ReservationResult> successes = new CopyOnWriteArrayList<>();
+
+        for (int i = 0; i < threadCount; i++) {
+            executor.submit(() -> {
+                try {
+                    startLatch.await();
+                    ReservationResult res = reservationService.reserve(orderId, items, "c-conc");
+                    successes.add(res);
+                } catch (Throwable t) {
+                    exceptions.add(t);
+                } finally {
+                    endLatch.countDown();
+                }
+            });
+        }
+
+        startLatch.countDown();
+        boolean completed = endLatch.await(10, TimeUnit.SECONDS);
+        executor.shutdown();
+
+        assertThat(completed).isTrue();
+        assertThat(exceptions).isEmpty();
+        assertThat(successes).hasSize(threadCount);
+
+        UUID expectedReservationId = successes.get(0).reservationId();
+        assertThat(successes).allMatch(r -> r.reservationId().equals(expectedReservationId));
+
+        // Stock must have been reserved exactly once (reserved = 2, available = 48)
+        StockBalance balance = stockService.get(skuId, defaultWarehouse.getId());
+        assertThat(balance.reserved()).isEqualTo(2);
+        assertThat(balance.available()).isEqualTo(48);
+    }
+
+    @Test
+    @DisplayName("Regression: Commit expiry race where concurrent commit wins CAS must never emit commit-failed event")
+    void testCommitExpiryRace_ConcurrentCommitWins_DoesNotEmitCommitFailed() {
+        ReservationRepository reservationRepo = mock(ReservationRepository.class);
+        ReservationItemRepository itemRepo = mock(ReservationItemRepository.class);
+        StockRepository stockRepo = mock(StockRepository.class);
+        StockMovementRepository movementRepo = mock(StockMovementRepository.class);
+        WarehouseRepository warehouseRepo = mock(WarehouseRepository.class);
+        InventoryQuarantineLogRepository quarantineRepo = mock(InventoryQuarantineLogRepository.class);
+        InventoryOutboxService outbox = mock(InventoryOutboxService.class);
+
+        ReservationServiceImpl service = new ReservationServiceImpl(
+                reservationRepo, itemRepo, stockRepo, movementRepo, warehouseRepo, quarantineRepo, outbox
+        );
+
+        UUID orderId = UUID.randomUUID();
+        UUID resId = UUID.randomUUID();
+
+        // 1. Initial read returns PENDING reservation that has expired
+        Reservation pendingExpired = Reservation.builder()
+                .id(resId)
+                .orderId(orderId)
+                .status(ReservationStatus.PENDING)
+                .expiresAt(Instant.now().minus(10, ChronoUnit.MINUTES))
+                .build();
+        when(reservationRepo.findByOrderId(orderId)).thenReturn(Optional.of(pendingExpired));
+
+        // 2. CAS to transition to EXPIRED returns 0 (lost race to concurrent commit)
+        when(reservationRepo.transitionToExpired(eq(resId), any())).thenReturn(0);
+
+        // 3. Re-read reservation finds it in COMMITTED status
+        Reservation committed = Reservation.builder()
+                .id(resId)
+                .orderId(orderId)
+                .status(ReservationStatus.COMMITTED)
+                .build();
+        when(reservationRepo.findById(resId)).thenReturn(Optional.of(committed));
+
+        // Act
+        service.commit(orderId, "c-race");
+
+        // Assert: Never emit commit failed event
+        verify(outbox, never()).recordReservationCommitFailedEvent(any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("Regression: transitionToCommitted predicate rejects expired reservations atomically")
+    @Transactional
+    void testTransitionToCommitted_ExpiredReservation_PredicateRejectsAndReturnsZero() {
+        UUID skuId = UUID.randomUUID();
+        stockService.adjust(new StockAdjustmentCommand(skuId, defaultWarehouse.getId(), 10, "ref-" + UUID.randomUUID(), "Init"), "admin", "c-pred");
+
+        UUID orderId = UUID.randomUUID();
+        reservationService.reserve(orderId, List.of(new ReservationItemCommand(skuId, 2)), "c-pred");
+        Reservation res = reservationRepository.findByOrderId(orderId).orElseThrow();
+
+        Instant expiredAt = Instant.now().minusSeconds(5);
+        res.setExpiresAt(expiredAt);
+        reservationRepository.saveAndFlush(res);
+
+        // Attempting to transition to COMMITTED when now > expires_at must return 0
+        int rows = reservationRepository.transitionToCommitted(res.getId(), Instant.now());
+        assertThat(rows).isEqualTo(0);
+
+        Reservation after = reservationRepository.findById(res.getId()).orElseThrow();
+        assertThat(after.getStatus()).isEqualTo(ReservationStatus.PENDING);
     }
 }

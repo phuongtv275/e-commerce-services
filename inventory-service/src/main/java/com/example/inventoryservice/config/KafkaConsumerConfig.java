@@ -29,7 +29,25 @@ public class KafkaConsumerConfig {
     private long maxAttempts = 3L;
 
     @Value("${inventory.kafka.dlt.payment-succeeded:inventory.payment-succeeded.dlt}")
-    private String paymentSucceededDltTopic;
+    private String paymentSucceededDltTopic = "inventory.payment-succeeded.dlt";
+
+    @Value("${inventory.kafka.dlt.payment-failed:inventory.payment-failed.dlt}")
+    private String paymentFailedDltTopic = "inventory.payment-failed.dlt";
+
+    @Value("${inventory.kafka.dlt.order-cancelled:inventory.order-cancelled.dlt}")
+    private String orderCancelledDltTopic = "inventory.order-cancelled.dlt";
+
+    String resolveDltTopic(String sourceTopic) {
+        if (sourceTopic == null) {
+            return paymentSucceededDltTopic;
+        }
+        return switch (sourceTopic) {
+            case "payment.succeeded" -> paymentSucceededDltTopic;
+            case "payment.failed" -> paymentFailedDltTopic;
+            case "order.cancelled" -> orderCancelledDltTopic;
+            default -> sourceTopic + ".dlt";
+        };
+    }
 
     ExponentialBackOff createBackOff() {
         ExponentialBackOff backOff = new ExponentialBackOff(initialBackoffMs, 2.0);
@@ -63,7 +81,8 @@ public class KafkaConsumerConfig {
         DefaultErrorHandler errorHandler;
         if (kafkaTemplate != null) {
             DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(kafkaTemplate,
-                    (record, ex) -> new TopicPartition(paymentSucceededDltTopic, record.partition()));
+                    (record, ex) -> new TopicPartition(resolveDltTopic(record.topic()), record.partition()));
+            recoverer.setFailIfSendResultIsError(true);
             errorHandler = new DefaultErrorHandler(recoverer, backOff);
         } else {
             errorHandler = new DefaultErrorHandler(backOff);

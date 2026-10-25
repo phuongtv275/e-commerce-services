@@ -6,7 +6,9 @@ import org.springframework.beans.factory.config.YamlPropertiesFactoryBean;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.ContainerProperties;
+import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.util.backoff.BackOffExecution;
@@ -89,5 +91,37 @@ class KafkaConsumerConfigTests {
         assertThat(properties.getProperty("inventory.kafka.consumer.max-attempts")).isEqualTo("3");
         assertThat(properties.getProperty("inventory.kafka.consumer.initial-backoff-ms")).isEqualTo("100");
         assertThat(properties.getProperty("inventory.kafka.consumer.max-backoff-ms")).isEqualTo("400");
+    }
+
+    @Test
+    @DisplayName("Regression: resolveDltTopic routes records to source-specific DLT topics, not payment-succeeded DLT")
+    void testResolveDltTopic_RoutesToAppropriateDlt() {
+        KafkaConsumerConfig config = new KafkaConsumerConfig();
+
+        assertThat(config.resolveDltTopic("payment.succeeded")).isEqualTo("inventory.payment-succeeded.dlt");
+        assertThat(config.resolveDltTopic("payment.failed")).isEqualTo("inventory.payment-failed.dlt");
+        assertThat(config.resolveDltTopic("order.cancelled")).isEqualTo("inventory.order-cancelled.dlt");
+    }
+
+    @Test
+    @DisplayName("Positive: When KafkaTemplate is present, DeadLetterPublishingRecoverer is configured with failIfSendResultIsError=true")
+    @SuppressWarnings("unchecked")
+    void testKafkaListenerContainerFactory_WithKafkaTemplate_ConfiguresDltRecovererWithFailOnError() {
+        KafkaConsumerConfig config = new KafkaConsumerConfig();
+        ConsumerFactory<Object, Object> consumerFactory = mock(ConsumerFactory.class);
+        KafkaTemplate<Object, Object> kafkaTemplate = mock(KafkaTemplate.class);
+
+        ConcurrentKafkaListenerContainerFactory<Object, Object> factory =
+                config.kafkaListenerContainerFactory(consumerFactory, kafkaTemplate);
+
+        DefaultErrorHandler errorHandler = (DefaultErrorHandler) ReflectionTestUtils.getField(factory, "commonErrorHandler");
+        assertThat(errorHandler).isNotNull();
+
+        Object rawFailureTracker = ReflectionTestUtils.getField(errorHandler, "failureTracker");
+        DeadLetterPublishingRecoverer recoverer = (DeadLetterPublishingRecoverer) ReflectionTestUtils.getField(rawFailureTracker, "recoverer");
+        assertThat(recoverer).isNotNull();
+
+        Boolean failOnError = (Boolean) ReflectionTestUtils.getField(recoverer, "failIfSendResultIsError");
+        assertThat(failOnError).isTrue();
     }
 }
