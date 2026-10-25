@@ -3,6 +3,7 @@ package com.example.identityservice.models.services.impl;
 import com.ecommerce.common.exception.ResourceNotFoundException;
 import com.example.identityservice.models.dto.req.AddressReq;
 import com.example.identityservice.models.dto.res.AddressRes;
+import com.example.identityservice.models.dto.res.InternalAddressRes;
 import com.example.identityservice.models.entities.Address;
 import com.example.identityservice.models.entities.User;
 import com.example.identityservice.models.repositories.AddressRepository;
@@ -57,6 +58,13 @@ public class AddressServiceImpl implements AddressService {
         Address address = addressRepository.findByIdAndUserIdAndDeletedAtIsNull(addressId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Address not found with id: " + addressId));
         return mapToRes(address);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public InternalAddressRes getInternalAddress(UUID userId, UUID addressId) {
+        return addressRepository.findInternalAddressByIdAndUserId(addressId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Address not found with id: " + addressId));
     }
 
     @Override

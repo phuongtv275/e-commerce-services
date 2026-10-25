@@ -2,6 +2,12 @@
   <configuration default="false" name="EurekaServerApplication" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
     <module name="e-commerce-services.eureka-server.main" />
     <option name="SPRING_BOOT_MAIN_CLASS" value="com.example.eurekaserver.EurekaServerApplication" />
+    <envFilePaths>
+      <option value="$PROJECT_DIR$/.env" />
+    </envFilePaths>
+    <envs>
+      <env name="SPRING_PROFILES_ACTIVE" value="dev" />
+    </envs>
     <method v="2">
       <option name="Make" enabled="true" />
     </method>

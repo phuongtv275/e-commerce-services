@@ -6,6 +6,66 @@ spring:
     name: order-service
   config:
     import: "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+  kafka:
+    consumer:
+      group-id: ${order.kafka.consumer-group:order-service-group}
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+    listener:
+      ack-mode: manual
+
+security:
+  gateway-assertion:
+    public-key: ${GATEWAY_ASSERTION_PUBLIC_KEY:}
+  internal-service-keys:
+    payment-service: ${INTERNAL_SERVICE_KEYS_PAYMENT_SERVICE:${INTERNAL_KEY_PAYMENT:}}
+
+services:
+  catalog-service:
+    base-url: ${CATALOG_SERVICE_URL:http://localhost:8082}
+    internal-key: ${INTERNAL_KEY_ORDER:}
+    connect-timeout-ms: 3000
+    read-timeout-ms: 5000
+  inventory-service:
+    base-url: ${INVENTORY_SERVICE_URL:http://localhost:8083}
+    internal-key: ${INTERNAL_KEY_ORDER:}
+    connect-timeout-ms: 3000
+    read-timeout-ms: 5000
+  identity-service:
+    base-url: ${IDENTITY_SERVICE_URL:http://localhost:8081}
+    internal-key: ${INTERNAL_KEY_ORDER:}
+    connect-timeout-ms: 3000
+    read-timeout-ms: 5000
+
+order:
+  idempotency:
+    retention-hours: 24
+  kafka:
+    consumer-group: order-service-group
+    topic:
+      payment-succeeded: payment.succeeded
+      payment-failed: payment.failed
+      reservation-expired: inventory.reservation-expired
+      order-created: order.created
+      order-status-changed: order.status-changed
+      order-cancelled: order.cancelled
+    consumer:
+      max-attempts: 3
+      initial-backoff-ms: 100
+      max-backoff-ms: 400
+      dlt-suffix: .dlt
+
+outbox:
+  publisher:
+    interval-ms: 2000
 
 eureka:
   client:
@@ -19,4 +79,8 @@ management:
         include: health,info
   endpoint:
     health:
-      show-details: always
+      show-details: never
+
+logging:
+  pattern:
+    correlation: "[%X{correlationId:-}] "

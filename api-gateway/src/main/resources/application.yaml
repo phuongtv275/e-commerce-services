@@ -10,7 +10,7 @@ spring:
       - org.springframework.boot.security.reactive.autoconfigure.ReactiveSecurityAutoConfiguration
       - org.springframework.boot.security.reactive.autoconfigure.ReactiveUserDetailsServiceAutoConfiguration
   config:
-    import: "optional:configserver:${CONFIG_SERVER_URL:http://config-server:8888}"
+    import: "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -42,35 +42,35 @@ spring:
             targetService: identity-service
 
         - id: catalog-public
-          uri: http://${CATALOG_SERVICE_URL:catalog-service:8082}
+          uri: http://${CATALOG_SERVICE_URL:localhost:8082}
           predicates:
             - Path=/api/v1/catalog/products/**, /api/v1/catalog/categories/**, /api/v1/catalog/brands/**, /api/v1/catalog/search/**
           metadata:
             targetService: catalog-service
 
         - id: catalog-admin
-          uri: http://${CATALOG_SERVICE_URL:catalog-service:8082}
+          uri: http://${CATALOG_SERVICE_URL:localhost:8082}
           predicates:
             - Path=/api/v1/catalog/admin/**
           metadata:
             targetService: catalog-service
 
         - id: inventory-service-routes
-          uri: http://${INVENTORY_SERVICE_URL:inventory-service:8083}
+          uri: http://${INVENTORY_SERVICE_URL:localhost:8083}
           predicates:
             - Path=/api/v1/inventory/**
           metadata:
             targetService: inventory-service
 
         - id: order-service-routes
-          uri: http://${ORDER_SERVICE_URL:order-service:8084}
+          uri: http://${ORDER_SERVICE_URL:localhost:8084}
           predicates:
             - Path=/api/v1/orders/**
           metadata:
             targetService: order-service
 
         - id: payment-momo-ipn-webhook
-          uri: http://${PAYMENT_SERVICE_URL:payment-service:8085}
+          uri: http://${PAYMENT_SERVICE_URL:localhost:8085}
           predicates:
             - Path=/api/v1/payments/momo/ipn
             - Method=POST
@@ -78,14 +78,14 @@ spring:
             targetService: payment-service
 
         - id: payment-service-routes
-          uri: http://${PAYMENT_SERVICE_URL:payment-service:8085}
+          uri: http://${PAYMENT_SERVICE_URL:localhost:8085}
           predicates:
             - Path=/api/v1/payments/**, /api/v1/admin/payments/**
           metadata:
             targetService: payment-service
 
         - id: notification-admin-routes
-          uri: http://${NOTIFICATION_SERVICE_URL:notification-service:8086}
+          uri: http://${NOTIFICATION_SERVICE_URL:localhost:8086}
           predicates:
             - Path=/api/v1/admin/notifications/**
           metadata:
