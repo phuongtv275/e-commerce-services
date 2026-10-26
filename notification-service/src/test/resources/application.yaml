@@ -1,0 +1,58 @@
+spring:
+  application:
+    name: notification-service
+  config:
+    import: ""
+  cloud:
+    config:
+      enabled: false
+  datasource:
+    url: jdbc:h2:mem:notification_db;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+  flyway:
+    enabled: false
+  kafka:
+    bootstrap-servers: localhost:9092
+  mail:
+    host: localhost
+    port: 587
+
+eureka:
+  client:
+    enabled: false
+
+management:
+  health:
+    mail:
+      enabled: false
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+notification:
+  mail:
+    from: noreply@ecom.local
+  verification-base-url: "http://localhost:8080/api/v1/auth/verify?token="
+  internal:
+    identity-service-url: http://localhost:8081
+    order-service-url: http://localhost:8084
+    service-key: test-key
+  worker:
+    max-concurrent-jobs: 2
+    poll-interval-ms: 60000
+    claim-lease-seconds: 120
+  redrive:
+    cron: "0 0 0 1 1 ?"
+    cooldown-minutes: 5
+    batch-size: 50
+    max-retries: 10
+  retention:
+    cron: "0 0 0 1 1 ?"
+    retention-days: 30

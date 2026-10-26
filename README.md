@@ -19,7 +19,7 @@ Backend Microservices platform for multi-channel e-commerce system built with Sp
 | **inventory-service** | Internal (`8083`) | v0.1.2: Stock ledger, reservations, expiry, oversell-safe stock updates, Batch Stock Availability (`POST /internal/inventory/stocks/batch`) | Spring Boot WebMVC, PostgreSQL (`inventory_db`), Kafka |
 | **order-service** | Internal (`8084`) | v0.1.1: Cart, Orders, Checkout, Outbox, Idempotency, Order Lifecycle State Machine (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`order_db`), Kafka |
 | **payment-service** | Internal (`8085`) | Payment Transactions, Refunds (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`payment_db`) |
-| **notification-service** | Internal (`8086`) | Email, SMS, Webhook Notifications (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`notification_db`), MailHog |
+| **notification-service** | Internal (`8086`) | v0.1.1: Durable Kafka event ingestion, Vietnamese HTML email rendering, bounded JavaMailSender SMTP delivery, retry/DLQ auto-redrive, PII retention purge, Admin DLQ APIs (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`notification_db`), Spring Kafka, JavaMailSender, Flyway |
 | **eureka-server** | `8761` | Service Registry & Discovery | Spring Cloud Netflix Eureka Server |
 | **config-server** | `8888` | Centralized Configuration Management | Spring Cloud Config Server (`native` profile) |
 | **PostgreSQL** | `5432` | Multi-Tenant Database | PostgreSQL 16 Alpine (6 independent databases) |
@@ -28,7 +28,6 @@ Backend Microservices platform for multi-channel e-commerce system built with Sp
 | **Redis** | `6379` | Cache & Distributed Locks | Redis 7.0 Alpine (`--requirepass rikkeiacademy`) |
 | **Redis Insight** | `5540` | Redis GUI Management Web UI | Redis Insight (`http://localhost:5540`) |
 | **Elasticsearch** | `9200` | Full-Text Search Engine | Elasticsearch 8.13.4 |
-| **MailHog** | `1025` / `8025` | Mock SMTP & Mail Web UI | MailHog (SMTP: 1025, Web: 8025) |
 
 ---
 
@@ -83,7 +82,7 @@ Run unit tests across all 9 microservices:
 ```
 
 ### Run Backing Infrastructure & Core Services
-Start PostgreSQL, Kafka, Redis, Elasticsearch, MailHog, Config Server, and Eureka Server:
+Start PostgreSQL, Kafka, Redis, Elasticsearch, Config Server, and Eureka Server:
 ```bash
 docker compose -p ecom up -d
 ```
@@ -92,13 +91,14 @@ Verify services are healthy:
 - Config Server Health: `curl http://localhost:8888/actuator/health`
 - Eureka Server Dashboard: `http://localhost:8761`
 - Kafka UI: `http://localhost:8089`
-- MailHog UI: `http://localhost:8025`
 
 ### Run All Microservices
 To launch all business microservices alongside backing infrastructure:
 ```bash
 docker compose -p ecom -f docker-compose.yml -f docker-compose.apps.yml up -d --build
 ```
+
+Configure `SPRING_MAIL_HOST`, `SPRING_MAIL_PORT`, `SPRING_MAIL_USERNAME`, `SPRING_MAIL_PASSWORD`, and `MAIL_FROM` for SMTP delivery.
 
 ---
 
@@ -168,3 +168,18 @@ Order Service owns customer shopping carts, idempotent order checkout, order lif
 - **Atomic Local Persistence & Synchronous Compensation:** Upon successful Inventory reservation, local order persistence (`PENDING` order, item snapshots, initial status history, outbox event, idempotency record completion, cart clearing) commits atomically. If local commit fails, the transaction is rolled back, the reservation is synchronously released via `POST /internal/inventory/reservations/{orderId}/release`, and the idempotency record is recorded as `FAILED`.
 - **State Machine & Kafka Event Processing:** Order state transitions (`PENDING -> CONFIRMED -> SHIPPING -> COMPLETED` or `CANCELLED`) follow strict CAS state machine logic. Kafka consumers process `payment.succeeded`, `payment.failed`, `inventory.reservation-expired`, and `inventory.reservation-commit-failed` idempotently using `common-library`'s `ProcessedEventRepository`.
 - **Internal Payment Service Contract:** Exposes `GET /internal/orders/{orderId}` strictly for `ROLE_SERVICE_PAYMENT` via `InternalServiceFilter`, omitting customer PII and providing authoritative order amount and status.
+
+---
+
+## 9. Notification Service Architecture (`notification-service` v0.1.1)
+
+Notification Service manages durable transactional email notifications, template rendering, bounded SMTP delivery, automatic DLQ redrive, and PII retention lifecycle.
+
+### Key Architectural Invariants
+- **Database & Persistence:** Dedicated PostgreSQL database (`notification_db`) with Flyway migrations (`V1__init_notification_schema.sql`, `V2__seed_notification_templates.sql`) managing `notification_templates`, `notification_logs`, and `processed_events`.
+- **Durable Kafka Ingestion & Deduplication:** Subscribes to 5 approved domain topics (`user.registered`, `order.status-changed`, `order.cancelled`, `payment.succeeded`, `payment.refund-completed`). Filters `order.status-changed` for `CONFIRMED` orders only. In a single local database transaction, saves `NotificationLog` in `QUEUED` state and records `processed_events` for consumer group `notification-service-group` before acknowledging offsets. Duplicates are safely acknowledged as no-ops.
+- **Zero-Trust Inter-Service Snapshots:** Calls `GET /internal/orders/{orderId}/notification-snapshot` (`ROLE_SERVICE_NOTIFICATION`) for order snapshot and item rows, and `GET /internal/users/{userId}` for recipient email/name. Secrets are configured externally via `${INTERNAL_SERVICE_KEYS_NOTIFICATION_SERVICE}` without hardcoded fallbacks.
+- **Template Rendering & Bounded SMTP Worker:** Vietnamese HTML templates render with escaped values and safe item rows. A bounded worker atomically claims `QUEUED`/`FAILED` jobs with a 10-minute lease and delivers through `JavaMailSender` outside database transactions, applying exponential backoff and transitioning to `DEAD_LETTER` after 3 attempts.
+- **Auto-Redrive & DLQ Fencing:** Scheduled worker scans `DEAD_LETTER` jobs with a 5-minute cooldown (up to 10 total attempts), claims atomically with a unique claim token and 10-minute lease, fencing stale workers.
+- **PII Retention Purge:** Daily job (03:00 UTC) scrubs records older than 30 days (`[PURGED_PII]`, masked recipient `j***e@domain.com`, `[PURGED_PII_LOG]`), converts `QUEUED`/`REDRIVING` to `EXPIRED_UNSENT`, and preserves deduplication keys and audit history.
+- **Admin Management APIs:** `GET /api/v1/admin/notifications/dlq` (paginated, masked recipient), `GET /api/v1/admin/notifications/{id}` (full detail), and `POST /api/v1/admin/notifications/redrive-dlq` (rejects purged records with 422 `BUSINESS_RULE_VIOLATION`), strictly protected by `ROLE_ADMINISTRATOR`.

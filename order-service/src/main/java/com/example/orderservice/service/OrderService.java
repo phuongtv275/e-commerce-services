@@ -19,6 +19,8 @@ public interface OrderService {
 
     InternalOrderPaymentResponse getInternalOrderForPayment(UUID orderId);
 
+    InternalOrderNotificationResponse getInternalOrderForNotification(UUID orderId);
+
     void handlePaymentSucceeded(UUID orderId, UUID paymentId);
 
     void handlePaymentFailed(UUID orderId, String reason);

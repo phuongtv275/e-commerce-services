@@ -175,6 +175,14 @@ services:
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/notification_db
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      GATEWAY_ASSERTION_PUBLIC_KEY: ${GATEWAY_ASSERTION_PUBLIC_KEY}
+      INTERNAL_SERVICE_KEYS_NOTIFICATION_SERVICE: ${INTERNAL_SERVICE_KEYS_NOTIFICATION_SERVICE}
+      SPRING_MAIL_HOST: ${SPRING_MAIL_HOST:-}
+      SPRING_MAIL_PORT: ${SPRING_MAIL_PORT:-587}
+      SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-}
+      SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-}
     depends_on:
       config-server:
         condition: service_healthy
@@ -182,6 +190,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      kafka:
+        condition: service_started
     networks:
       - ecom_backend_net
       - ecom_data_net

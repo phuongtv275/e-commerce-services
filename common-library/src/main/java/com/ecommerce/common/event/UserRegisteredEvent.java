@@ -1,5 +1,6 @@
 package com.ecommerce.common.event;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import lombok.*;
 
 import java.time.Instant;
@@ -27,5 +28,6 @@ public class UserRegisteredEvent implements DomainEvent {
     private UUID userId;
     private String email;
     private String fullName;
+    @JsonAlias({"token"})
     private String verificationToken;
 }

@@ -24,6 +24,7 @@ import com.example.orderservice.service.OrderCheckoutTxManager.ClaimResult;
 import com.example.orderservice.service.OrderCheckoutTxManager.OrderItemSnapshot;
 import com.example.orderservice.service.OrderService;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -326,6 +327,100 @@ public class OrderServiceImpl implements OrderService {
                 .currency(order.getCurrency())
                 .status(order.getStatus().name())
                 .orderCode(order.getOrderCode())
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public InternalOrderNotificationResponse getInternalOrderForNotification(UUID orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Đơn hàng không tồn tại"));
+
+        List<NotificationOrderItemResponse> items = order.getItems() != null
+                ? order.getItems().stream()
+                .map(i -> NotificationOrderItemResponse.builder()
+                        .productName(i.getProductName())
+                        .skuName(i.getSkuName())
+                        .quantity(i.getQuantity())
+                        .unitPrice(i.getUnitPrice())
+                        .lineTotal(i.getLineTotal())
+                        .build())
+                .toList()
+                : List.of();
+
+        NotificationShippingAddressResponse shipping = parseNotificationShipping(order.getContactInfo(), order.getShippingAddress());
+
+        return InternalOrderNotificationResponse.builder()
+                .orderId(order.getId())
+                .customerId(order.getCustomerId())
+                .orderCode(order.getOrderCode())
+                .status(order.getStatus())
+                .totalAmount(order.getTotalAmount())
+                .currency(order.getCurrency())
+                .createdAt(order.getCreatedAt())
+                .shippingAddress(shipping)
+                .items(items)
+                .build();
+    }
+
+    private NotificationShippingAddressResponse parseNotificationShipping(String contactInfoJson, String shippingAddressJson) {
+        String recipientName = null;
+        String addressLine1 = null;
+        String addressLine2 = null;
+        String district = null;
+        String city = null;
+        String country = null;
+
+        if (contactInfoJson != null && !contactInfoJson.isBlank()) {
+            try {
+                JsonNode contactNode = objectMapper.readTree(contactInfoJson);
+                if (contactNode.hasNonNull("recipientName")) {
+                    recipientName = contactNode.get("recipientName").asText();
+                }
+            } catch (Exception e) {
+                log.warn("Failed to parse contactInfo JSON: {}", e.getMessage());
+            }
+        }
+
+        if (shippingAddressJson != null && !shippingAddressJson.isBlank()) {
+            try {
+                JsonNode addrNode = objectMapper.readTree(shippingAddressJson);
+                if (addrNode.hasNonNull("addressLine1")) {
+                    addressLine1 = addrNode.get("addressLine1").asText();
+                }
+                if (addrNode.hasNonNull("addressLine2")) {
+                    addressLine2 = addrNode.get("addressLine2").asText();
+                }
+                if (addrNode.hasNonNull("district")) {
+                    district = addrNode.get("district").asText();
+                }
+                if (addrNode.hasNonNull("city")) {
+                    city = addrNode.get("city").asText();
+                }
+                if (addrNode.hasNonNull("country")) {
+                    country = addrNode.get("country").asText();
+                }
+            } catch (Exception e) {
+                log.warn("Failed to parse shippingAddress JSON: {}", e.getMessage());
+            }
+        }
+
+        List<String> parts = new ArrayList<>();
+        if (addressLine1 != null && !addressLine1.isBlank()) parts.add(addressLine1);
+        if (addressLine2 != null && !addressLine2.isBlank()) parts.add(addressLine2);
+        if (district != null && !district.isBlank()) parts.add(district);
+        if (city != null && !city.isBlank()) parts.add(city);
+        if (country != null && !country.isBlank()) parts.add(country);
+        String formattedAddress = String.join(", ", parts);
+
+        return NotificationShippingAddressResponse.builder()
+                .recipientName(recipientName)
+                .addressLine1(addressLine1)
+                .addressLine2(addressLine2)
+                .district(district)
+                .city(city)
+                .country(country)
+                .formattedAddress(formattedAddress)
                 .build();
     }
 

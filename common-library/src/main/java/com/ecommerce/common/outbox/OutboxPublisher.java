@@ -80,6 +80,12 @@ public class OutboxPublisher {
                     "X-Event-Type",
                     event.getEventType().getBytes(StandardCharsets.UTF_8)
             ));
+            if (event.getId() != null) {
+                record.headers().add(new RecordHeader(
+                        "X-Event-Id",
+                        event.getId().toString().getBytes(StandardCharsets.UTF_8)
+                ));
+            }
 
             // Chờ ACK từ Kafka để đảm bảo At-Least-Once Delivery bền vững
             kafkaTemplate.send(record).get(5, TimeUnit.SECONDS);
