@@ -424,6 +424,30 @@ class ReservationServiceIntegrationTests {
     }
 
     @Test
+    @DisplayName("Regression: Commit on RESTOCKED reservation records commit-failed outbox event and persists without rollback")
+    void testCommitOnRestockedReservation_PersistsOutboxEventAndReturnsNormally() {
+        UUID skuId = UUID.randomUUID();
+        stockService.adjust(new StockAdjustmentCommand(skuId, defaultWarehouse.getId(), 10, "ref-" + UUID.randomUUID(), "Init"), "admin", "c-rst");
+
+        UUID orderId = UUID.randomUUID();
+        reservationService.reserve(orderId, List.of(new ReservationItemCommand(skuId, 3)), "c-rst");
+
+        Reservation res = reservationRepository.findByOrderId(orderId).orElseThrow();
+        res.setStatus(ReservationStatus.RESTOCKED);
+        reservationRepository.saveAndFlush(res);
+
+        // When commit is called on a RESTOCKED reservation, it must record the outbox event and return normally without rollback
+        reservationService.commit(orderId, "c-commit-restocked-success");
+
+        List<OutboxEvent> outboxList = outboxEventRepository.findAll().stream()
+                .filter(e -> "RESERVATION".equals(e.getAggregateType()) && res.getId().toString().equals(e.getAggregateId()))
+                .toList();
+        boolean hasFailedEvent = outboxList.stream()
+                .anyMatch(e -> e.getEventType().equals("inventory.reservation-commit-failed"));
+        assertThat(hasFailedEvent).isTrue();
+    }
+
+    @Test
     @DisplayName("Positive: Configurable reservation TTL sets expiresAt based on inventory.reservation.ttl")
     void testConfigurableReservationTtl_SetsExpiresAt() {
         UUID skuId = UUID.randomUUID();

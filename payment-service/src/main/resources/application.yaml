@@ -6,6 +6,32 @@ spring:
     name: payment-service
   config:
     import: "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
+  kafka:
+    consumer:
+      group-id: ${payment.kafka.consumer-group:payment-service-group}
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+    listener:
+      ack-mode: manual
+
+payment:
+  kafka:
+    consumer-group: payment-service-group
+    topic:
+      payment-late-success: payment.late-success
+      order-cancelled: order.cancelled
+      reservation-commit-failed: inventory.reservation-commit-failed
+      reservation-expired: inventory.reservation-expired
+    dlt:
+      payment-late-success: payment.payment-late-success.dlt
+      order-cancelled: payment.order-cancelled.dlt
+      reservation-commit-failed: payment.reservation-commit-failed.dlt
+      reservation-expired: payment.reservation-expired.dlt
+    consumer:
+      max-attempts: 3
+      initial-backoff-ms: 1000
+      max-backoff-ms: 4000
+      jitter-ms: 200
 
 eureka:
   client:

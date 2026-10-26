@@ -35,8 +35,9 @@ inventory:
       order-cancelled: inventory.order-cancelled.dlt
     consumer:
       max-attempts: 3
-      initial-backoff-ms: 100
-      max-backoff-ms: 400
+      initial-backoff-ms: 1000
+      max-backoff-ms: 4000
+      jitter-ms: 200
   reservation:
     ttl: 15m
     expiry-interval-ms: 30000

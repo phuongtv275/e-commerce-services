@@ -31,6 +31,7 @@ import java.util.function.Consumer;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @ExtendWith(MockitoExtension.class)
 class PaymentSagaConsumerTests {
@@ -121,6 +122,47 @@ class PaymentSagaConsumerTests {
 
         verify(refundService, never()).processAutoRefund(any(), any(), any(), any());
         verify(acknowledgment, times(1)).acknowledge();
+    }
+
+    @Test
+    @DisplayName("Negative: malformed order.cancelled is not acknowledged")
+    void consumeOrderCancelled_malformedPayloadIsNotAcknowledged() {
+        ConsumerRecord<String, String> record = new ConsumerRecord<>(
+                "order.cancelled", 0, 0L, UUID.randomUUID().toString(), "{invalid"
+        );
+
+        assertThrows(IllegalArgumentException.class,
+                () -> consumer.consumeOrderCancelled(record, acknowledgment));
+        verify(acknowledgment, never()).acknowledge();
+    }
+
+    @Test
+    @DisplayName("Negative: missing eventId is not acknowledged")
+    void consumeOrderCancelled_missingEventIdIsNotAcknowledged() {
+        ConsumerRecord<String, String> record = new ConsumerRecord<>(
+                "order.cancelled", 0, 0L, UUID.randomUUID().toString(),
+                "{\"eventType\":\"order.cancelled\",\"orderId\":\"" + UUID.randomUUID()
+                        + "\",\"refundRequired\":false}"
+        );
+
+        assertThrows(IllegalArgumentException.class,
+                () -> consumer.consumeOrderCancelled(record, acknowledgment));
+        verify(acknowledgment, never()).acknowledge();
+    }
+
+    @Test
+    @DisplayName("Negative: unsupported event version is not acknowledged")
+    void consumePaymentLateSuccess_unsupportedVersionIsNotAcknowledged() {
+        ConsumerRecord<String, String> record = new ConsumerRecord<>(
+                "payment.late-success", 0, 0L, UUID.randomUUID().toString(),
+                "{\"eventId\":\"" + UUID.randomUUID()
+                        + "\",\"eventType\":\"payment.late-success\",\"eventVersion\":2,\"orderId\":\""
+                        + UUID.randomUUID() + "\"}"
+        );
+
+        assertThrows(IllegalArgumentException.class,
+                () -> consumer.consumePaymentLateSuccess(record, acknowledgment));
+        verify(acknowledgment, never()).acknowledge();
     }
 
     @Test

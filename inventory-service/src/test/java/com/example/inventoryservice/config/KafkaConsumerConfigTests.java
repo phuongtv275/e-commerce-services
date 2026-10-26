@@ -42,16 +42,26 @@ class KafkaConsumerConfigTests {
         assertThat(errorHandler).isInstanceOf(DefaultErrorHandler.class);
 
         ExponentialBackOff backOff = config.createBackOff();
-        assertThat(backOff.getInitialInterval()).isEqualTo(100L);
-        assertThat(backOff.getMaxInterval()).isEqualTo(400L);
+        assertThat(backOff.getInitialInterval()).isEqualTo(1000L);
+        assertThat(backOff.getMaxInterval()).isEqualTo(4000L);
         assertThat(backOff.getMaxAttempts()).isEqualTo(3L);
-        assertThat(backOff.getMaxElapsedTime()).isEqualTo(700L); // 100 + 200 + 400
+        assertThat(backOff.getMaxElapsedTime()).isEqualTo(7000L); // 1000 + 2000 + 4000
 
-        BackOffExecution execution = backOff.start();
-        assertThat(execution.nextBackOff()).isEqualTo(100L);
-        assertThat(execution.nextBackOff()).isEqualTo(200L);
-        assertThat(execution.nextBackOff()).isEqualTo(400L);
+        // When jitter is set to 0, exactly 1s, 2s, 4s then STOP
+        ReflectionTestUtils.setField(config, "jitterMs", 0L);
+        ExponentialBackOff noJitterBackOff = config.createBackOff();
+        BackOffExecution execution = noJitterBackOff.start();
+        assertThat(execution.nextBackOff()).isEqualTo(1000L);
+        assertThat(execution.nextBackOff()).isEqualTo(2000L);
+        assertThat(execution.nextBackOff()).isEqualTo(4000L);
         assertThat(execution.nextBackOff()).isEqualTo(BackOffExecution.STOP);
+
+        // With default jitter, three retries within jitter bounds then STOP
+        BackOffExecution jitterExecution = backOff.start();
+        assertThat(jitterExecution.nextBackOff()).isBetween(800L, 1200L);
+        assertThat(jitterExecution.nextBackOff()).isBetween(1600L, 2400L);
+        assertThat(jitterExecution.nextBackOff()).isBetween(3200L, 4000L);
+        assertThat(jitterExecution.nextBackOff()).isEqualTo(BackOffExecution.STOP);
     }
 
     @Test
@@ -62,6 +72,7 @@ class KafkaConsumerConfigTests {
         ReflectionTestUtils.setField(config, "initialBackoffMs", 250L);
         ReflectionTestUtils.setField(config, "maxBackoffMs", 2000L);
         ReflectionTestUtils.setField(config, "maxAttempts", 5L);
+        ReflectionTestUtils.setField(config, "jitterMs", 0L);
 
         ExponentialBackOff backOff = config.createBackOff();
         assertThat(backOff.getInitialInterval()).isEqualTo(250L);
@@ -89,8 +100,9 @@ class KafkaConsumerConfigTests {
         assertThat(properties.getProperty("spring.kafka.listener.ack-mode")).isEqualTo("manual");
         assertThat(properties.getProperty("inventory.kafka.consumer-group")).isEqualTo("inventory-reservation-group");
         assertThat(properties.getProperty("inventory.kafka.consumer.max-attempts")).isEqualTo("3");
-        assertThat(properties.getProperty("inventory.kafka.consumer.initial-backoff-ms")).isEqualTo("100");
-        assertThat(properties.getProperty("inventory.kafka.consumer.max-backoff-ms")).isEqualTo("400");
+        assertThat(properties.getProperty("inventory.kafka.consumer.initial-backoff-ms")).isEqualTo("1000");
+        assertThat(properties.getProperty("inventory.kafka.consumer.max-backoff-ms")).isEqualTo("4000");
+        assertThat(properties.getProperty("inventory.kafka.consumer.jitter-ms")).isEqualTo("200");
     }
 
     @Test
@@ -101,6 +113,12 @@ class KafkaConsumerConfigTests {
         assertThat(config.resolveDltTopic("payment.succeeded")).isEqualTo("inventory.payment-succeeded.dlt");
         assertThat(config.resolveDltTopic("payment.failed")).isEqualTo("inventory.payment-failed.dlt");
         assertThat(config.resolveDltTopic("order.cancelled")).isEqualTo("inventory.order-cancelled.dlt");
+    }
+
+    @Test
+    @DisplayName("Regression: DLT destination lets Kafka select a valid partition")
+    void testResolveDltPartition_DoesNotReuseSourcePartition() {
+        assertThat(new KafkaConsumerConfig().resolveDltPartition("order.cancelled").partition()).isEqualTo(-1);
     }
 
     @Test

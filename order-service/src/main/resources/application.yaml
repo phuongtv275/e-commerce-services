@@ -54,14 +54,21 @@ order:
       payment-succeeded: payment.succeeded
       payment-failed: payment.failed
       reservation-expired: inventory.reservation-expired
+      reservation-commit-failed: inventory.reservation-commit-failed
       order-created: order.created
       order-status-changed: order.status-changed
       order-cancelled: order.cancelled
     consumer:
       max-attempts: 3
-      initial-backoff-ms: 100
-      max-backoff-ms: 400
+      initial-backoff-ms: 1000
+      max-backoff-ms: 4000
+      jitter-ms: 200
       dlt-suffix: .dlt
+    dlt:
+      payment-succeeded: order.payment-succeeded.dlt
+      payment-failed: order.payment-failed.dlt
+      reservation-expired: order.reservation-expired.dlt
+      reservation-commit-failed: order.reservation-commit-failed.dlt
 
 outbox:
   publisher:

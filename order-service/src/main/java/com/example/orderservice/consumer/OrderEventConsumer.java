@@ -1,6 +1,7 @@
 package com.example.orderservice.consumer;
 
 import com.ecommerce.common.constant.SecurityConstants;
+import com.ecommerce.common.event.DomainEvent;
 import com.ecommerce.common.event.PaymentFailedEvent;
 import com.ecommerce.common.event.PaymentSucceededEvent;
 import com.ecommerce.common.event.ReservationCommitFailedEvent;
@@ -8,6 +9,7 @@ import com.ecommerce.common.event.ReservationExpiredEvent;
 import com.ecommerce.common.idempotency.IdempotentConsumerHelper;
 import com.example.orderservice.service.OrderService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -16,6 +18,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
+
+import java.util.UUID;
 
 @Slf4j
 @Component
@@ -36,13 +40,10 @@ public class OrderEventConsumer {
     public void consumePaymentSucceeded(ConsumerRecord<String, String> record, Acknowledgment ack) {
         try {
             PaymentSucceededEvent event = objectMapper.readValue(record.value(), PaymentSucceededEvent.class);
-            if (event.getOrderId() == null) {
-                log.warn("payment.succeeded missing orderId: {}", record.value());
-                if (ack != null) ack.acknowledge();
-                return;
-            }
+            validateSagaEvent(record.value(), event, "payment.succeeded");
+            if (event.getPaymentId() == null) throw new IllegalArgumentException("payment.succeeded missing paymentId");
 
-            String eventId = event.getEventId() != null ? event.getEventId().toString() : record.key();
+            String eventId = event.getEventId().toString();
             if (event.getCorrelationId() != null) {
                 MDC.put(SecurityConstants.MDC_CORRELATION_ID, event.getCorrelationId());
             }
@@ -68,13 +69,9 @@ public class OrderEventConsumer {
     public void consumePaymentFailed(ConsumerRecord<String, String> record, Acknowledgment ack) {
         try {
             PaymentFailedEvent event = objectMapper.readValue(record.value(), PaymentFailedEvent.class);
-            if (event.getOrderId() == null) {
-                log.warn("payment.failed missing orderId: {}", record.value());
-                if (ack != null) ack.acknowledge();
-                return;
-            }
+            validateSagaEvent(record.value(), event, "payment.failed");
 
-            String eventId = event.getEventId() != null ? event.getEventId().toString() : record.key();
+            String eventId = event.getEventId().toString();
             if (event.getCorrelationId() != null) {
                 MDC.put(SecurityConstants.MDC_CORRELATION_ID, event.getCorrelationId());
             }
@@ -100,13 +97,9 @@ public class OrderEventConsumer {
     public void consumeReservationExpired(ConsumerRecord<String, String> record, Acknowledgment ack) {
         try {
             ReservationExpiredEvent event = objectMapper.readValue(record.value(), ReservationExpiredEvent.class);
-            if (event.getOrderId() == null) {
-                log.warn("inventory.reservation-expired missing orderId: {}", record.value());
-                if (ack != null) ack.acknowledge();
-                return;
-            }
+            validateSagaEvent(record.value(), event, "inventory.reservation-expired");
 
-            String eventId = event.getEventId() != null ? event.getEventId().toString() : record.key();
+            String eventId = event.getEventId().toString();
             if (event.getCorrelationId() != null) {
                 MDC.put(SecurityConstants.MDC_CORRELATION_ID, event.getCorrelationId());
             }
@@ -132,13 +125,9 @@ public class OrderEventConsumer {
     public void consumeReservationCommitFailed(ConsumerRecord<String, String> record, Acknowledgment ack) {
         try {
             ReservationCommitFailedEvent event = objectMapper.readValue(record.value(), ReservationCommitFailedEvent.class);
-            if (event.getOrderId() == null) {
-                log.warn("inventory.reservation-commit-failed missing orderId: {}", record.value());
-                if (ack != null) ack.acknowledge();
-                return;
-            }
+            validateSagaEvent(record.value(), event, "inventory.reservation-commit-failed");
 
-            String eventId = event.getEventId() != null ? event.getEventId().toString() : record.key();
+            String eventId = event.getEventId().toString();
             if (event.getCorrelationId() != null) {
                 MDC.put(SecurityConstants.MDC_CORRELATION_ID, event.getCorrelationId());
             }
@@ -155,5 +144,23 @@ public class OrderEventConsumer {
         } finally {
             MDC.remove(SecurityConstants.MDC_CORRELATION_ID);
         }
+    }
+
+    private void validateSagaEvent(String payload, DomainEvent event, String expectedType) throws Exception {
+        JsonNode node = objectMapper.readTree(payload);
+        if (node == null || !node.isObject() || !node.hasNonNull("eventId")
+                || !node.hasNonNull("eventVersion") || !expectedType.equals(node.path("eventType").asText(null))
+                || event == null || event.getEventId() == null || event.getEventVersion() != 1
+                || !expectedType.equals(event.getEventType())) {
+            throw new IllegalArgumentException("Invalid " + expectedType + " event envelope");
+        }
+        UUID orderId = switch (event) {
+            case PaymentSucceededEvent e -> e.getOrderId();
+            case PaymentFailedEvent e -> e.getOrderId();
+            case ReservationExpiredEvent e -> e.getOrderId();
+            case ReservationCommitFailedEvent e -> e.getOrderId();
+            default -> null;
+        };
+        if (orderId == null) throw new IllegalArgumentException(expectedType + " missing orderId");
     }
 }

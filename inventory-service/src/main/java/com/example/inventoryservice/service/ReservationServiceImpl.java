@@ -242,9 +242,12 @@ public class ReservationServiceImpl implements ReservationService {
             return; // Idempotent no-op
         }
 
-        if (reservation.getStatus() == ReservationStatus.EXPIRED || reservation.getStatus() == ReservationStatus.RELEASED) {
+        if (reservation.getStatus() == ReservationStatus.EXPIRED
+                || reservation.getStatus() == ReservationStatus.RELEASED
+                || reservation.getStatus() == ReservationStatus.RESTOCKED) {
             String failReason = (reservation.getStatus() == ReservationStatus.EXPIRED)
-                    ? "RESERVATION_EXPIRED" : "RESERVATION_ALREADY_RELEASED";
+                    ? "RESERVATION_EXPIRED"
+                    : (reservation.getStatus() == ReservationStatus.RESTOCKED ? "RESERVATION_ALREADY_RESTOCKED" : "RESERVATION_ALREADY_RELEASED");
             outboxService.recordReservationCommitFailedEvent(reservation.getId(), orderId, failReason, correlationId);
             log.info("Reservation for orderId {} is already {}, recorded failed commit outbox event", orderId, reservation.getStatus());
             return;
@@ -285,9 +288,12 @@ public class ReservationServiceImpl implements ReservationService {
             if (current.getStatus() == ReservationStatus.COMMITTED) {
                 return;
             }
-            if (current.getStatus() == ReservationStatus.EXPIRED || current.getStatus() == ReservationStatus.RELEASED) {
+            if (current.getStatus() == ReservationStatus.EXPIRED
+                    || current.getStatus() == ReservationStatus.RELEASED
+                    || current.getStatus() == ReservationStatus.RESTOCKED) {
                 String failReason = (current.getStatus() == ReservationStatus.EXPIRED)
-                        ? "RESERVATION_EXPIRED" : "RESERVATION_ALREADY_RELEASED";
+                        ? "RESERVATION_EXPIRED"
+                        : (current.getStatus() == ReservationStatus.RESTOCKED ? "RESERVATION_ALREADY_RESTOCKED" : "RESERVATION_ALREADY_RELEASED");
                 outboxService.recordReservationCommitFailedEvent(current.getId(), orderId, failReason, correlationId);
                 return;
             }
@@ -302,9 +308,12 @@ public class ReservationServiceImpl implements ReservationService {
                 if (reloaded.getStatus() == ReservationStatus.COMMITTED) {
                     return;
                 }
-                if (reloaded.getStatus() == ReservationStatus.EXPIRED || reloaded.getStatus() == ReservationStatus.RELEASED) {
+                if (reloaded.getStatus() == ReservationStatus.EXPIRED
+                        || reloaded.getStatus() == ReservationStatus.RELEASED
+                        || reloaded.getStatus() == ReservationStatus.RESTOCKED) {
                     String failReason = (reloaded.getStatus() == ReservationStatus.EXPIRED)
-                            ? "RESERVATION_EXPIRED" : "RESERVATION_ALREADY_RELEASED";
+                            ? "RESERVATION_EXPIRED"
+                            : (reloaded.getStatus() == ReservationStatus.RESTOCKED ? "RESERVATION_ALREADY_RESTOCKED" : "RESERVATION_ALREADY_RELEASED");
                     outboxService.recordReservationCommitFailedEvent(reloaded.getId(), orderId, failReason, correlationId);
                     return;
                 }

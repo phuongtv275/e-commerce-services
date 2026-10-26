@@ -166,7 +166,7 @@ class PaymentEventConsumerTests {
     }
 
     @Test
-    @DisplayName("Negative: Missing reservation on attempt 1 throws exception to trigger Kafka retry without ack")
+    @DisplayName("Negative: Missing reservation on attempts 1, 2, 3 throws exception to trigger Kafka retries without ack")
     void testPaymentSucceeded_MissingReservation_ThrowsForRetry() throws Exception {
         UUID orderId = UUID.randomUUID();
         UUID eventId = UUID.randomUUID();
@@ -190,7 +190,13 @@ class PaymentEventConsumerTests {
             return true;
         }).when(idempotentConsumerHelper).processIdempotent(eq(eventId.toString()), any(), any(), any());
 
+        // Attempt 1 (initial) throws
         assertThatThrownBy(() -> consumer.consumePaymentSucceeded(record, acknowledgment, 1))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Reservation not found for orderId");
+
+        // Attempt 3 (retry 2) still throws
+        assertThatThrownBy(() -> consumer.consumePaymentSucceeded(record, acknowledgment, 3))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Reservation not found for orderId");
 
@@ -199,7 +205,7 @@ class PaymentEventConsumerTests {
     }
 
     @Test
-    @DisplayName("Negative: Missing reservation after retry exhaustion (attempt >= 3) records quarantine and acks")
+    @DisplayName("Negative: Missing reservation after retry exhaustion (attempt >= 4) records quarantine and acks")
     void testPaymentSucceeded_MissingReservation_ExhaustedRetriesQuarantined() throws Exception {
         UUID orderId = UUID.randomUUID();
         UUID eventId = UUID.randomUUID();
@@ -223,8 +229,8 @@ class PaymentEventConsumerTests {
             return true;
         }).when(idempotentConsumerHelper).processIdempotent(eq(eventId.toString()), any(), any(), any());
 
-        // Attempt 3: exhausted
-        consumer.consumePaymentSucceeded(record, acknowledgment, 3);
+        // Attempt 4: exhausted after 3 retries
+        consumer.consumePaymentSucceeded(record, acknowledgment, 4);
 
         verify(reservationService).quarantineCommitFailure(eq(orderId), eq("RESERVATION_NOT_FOUND_AFTER_PAYMENT"), eq(payload), eq("corr-exhaust"));
         verify(acknowledgment).acknowledge();
@@ -275,7 +281,19 @@ class PaymentEventConsumerTests {
     }
 
     @Test
-    @DisplayName("Negative: When quarantineCommitFailure throws on attempt 3, exception propagates without ack")
+    @DisplayName("Negative: Payload with unsupported eventVersion (version 2) is quarantined and acknowledged")
+    void testPaymentSucceeded_UnsupportedVersion_QuarantinedAndAcked() {
+        String unsupportedPayload = "{\"eventId\":\"" + UUID.randomUUID() + "\",\"eventType\":\"payment.succeeded\",\"eventVersion\":2,\"orderId\":\"" + UUID.randomUUID() + "\",\"paymentId\":\"" + UUID.randomUUID() + "\"}";
+        ConsumerRecord<String, String> record = new ConsumerRecord<>("payment.succeeded", 0, 0, "some-key", unsupportedPayload);
+
+        consumer.consumePaymentSucceeded(record, acknowledgment, 1);
+
+        verify(quarantineLogRepository).save(any(InventoryQuarantineLog.class));
+        verify(acknowledgment).acknowledge();
+    }
+
+    @Test
+    @DisplayName("Negative: When quarantineCommitFailure throws on attempt 4, exception propagates without ack")
     void testPaymentSucceeded_ExhaustedRetry_QuarantineFails_ThrowsWithoutAck() {
         UUID orderId = UUID.randomUUID();
         UUID eventId = UUID.randomUUID();
@@ -304,7 +322,7 @@ class PaymentEventConsumerTests {
             return true;
         }).when(idempotentConsumerHelper).processIdempotent(eq(eventId.toString()), any(), any(), any());
 
-        assertThatThrownBy(() -> consumer.consumePaymentSucceeded(record, acknowledgment, 3))
+        assertThatThrownBy(() -> consumer.consumePaymentSucceeded(record, acknowledgment, 4))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Outbox/Quarantine DB transaction failed");
 
@@ -344,6 +362,32 @@ class PaymentEventConsumerTests {
     @DisplayName("Negative: payment.failed with missing orderId is quarantined and acknowledged")
     void testPaymentFailed_MissingOrderId_QuarantinedAndAcked() {
         String invalidPayload = "{\"eventId\":\"" + UUID.randomUUID() + "\",\"eventType\":\"payment.failed\"}";
+        ConsumerRecord<String, String> record = new ConsumerRecord<>("payment.failed", 0, 0, "fail-key", invalidPayload);
+
+        consumer.consumePaymentFailed(record, acknowledgment);
+
+        verify(quarantineLogRepository).save(any(InventoryQuarantineLog.class));
+        verify(acknowledgment).acknowledge();
+    }
+
+    @Test
+    @DisplayName("Negative: payment.failed without raw eventId is quarantined instead of assigned a generated id")
+    void testPaymentFailed_MissingEventId_QuarantinedAndAcked() {
+        String invalidPayload = "{\"eventType\":\"payment.failed\",\"eventVersion\":1,\"orderId\":\""
+                + UUID.randomUUID() + "\"}";
+        ConsumerRecord<String, String> record = new ConsumerRecord<>("payment.failed", 0, 0, "fail-key", invalidPayload);
+
+        consumer.consumePaymentFailed(record, acknowledgment);
+
+        verify(quarantineLogRepository).save(any(InventoryQuarantineLog.class));
+        verify(idempotentConsumerHelper, never()).processIdempotent(any(), any(), any(), any());
+        verify(acknowledgment).acknowledge();
+    }
+
+    @Test
+    @DisplayName("Negative: payment.failed with unsupported eventVersion (version 2) is quarantined and acknowledged")
+    void testPaymentFailed_UnsupportedVersion_QuarantinedAndAcked() {
+        String invalidPayload = "{\"eventId\":\"" + UUID.randomUUID() + "\",\"eventType\":\"payment.failed\",\"eventVersion\":2,\"orderId\":\"" + UUID.randomUUID() + "\"}";
         ConsumerRecord<String, String> record = new ConsumerRecord<>("payment.failed", 0, 0, "fail-key", invalidPayload);
 
         consumer.consumePaymentFailed(record, acknowledgment);
