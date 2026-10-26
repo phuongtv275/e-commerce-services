@@ -13,9 +13,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@org.springframework.test.context.TestPropertySource(properties = {
-        "eureka.client.enabled=false"
-})
 class NotificationServicePositiveTests {
 
     @Autowired

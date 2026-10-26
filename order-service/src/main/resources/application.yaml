@@ -27,6 +27,7 @@ security:
     public-key: ${GATEWAY_ASSERTION_PUBLIC_KEY:}
   internal-service-keys:
     payment-service: ${INTERNAL_SERVICE_KEYS_PAYMENT_SERVICE:${INTERNAL_KEY_PAYMENT:}}
+    notification-service: ${INTERNAL_SERVICE_KEYS_NOTIFICATION_SERVICE:${INTERNAL_KEY_NOTIFICATION:}}
 
 services:
   catalog-service:

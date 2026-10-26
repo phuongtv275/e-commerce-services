@@ -1,6 +1,8 @@
 package com.example.identityservice.models.services.impl;
 
 import com.ecommerce.common.constant.ErrorCode;
+import com.ecommerce.common.constant.SecurityConstants;
+import com.ecommerce.common.event.UserRegisteredEvent;
 import com.ecommerce.common.exception.BusinessException;
 import com.ecommerce.common.exception.ConflictException;
 import com.ecommerce.common.exception.ValidationException;
@@ -70,6 +72,49 @@ public class AuthServiceImpl implements AuthService {
         }
     }
 
+    private void saveUserRegisteredOutboxEvent(User user, String rawVerificationToken) {
+        UUID eventId = UUID.randomUUID();
+        String correlationId = MDC.get(SecurityConstants.MDC_CORRELATION_ID);
+        if (correlationId == null) {
+            correlationId = MDC.get("correlationId");
+        }
+
+        UserRegisteredEvent registeredEvent = UserRegisteredEvent.builder()
+                .eventId(eventId)
+                .eventType("user.registered")
+                .eventVersion(1)
+                .occurredAt(Instant.now())
+                .correlationId(correlationId)
+                .producer("identity-service")
+                .userId(user.getId())
+                .email(user.getEmail())
+                .fullName(user.getFullName())
+                .verificationToken(rawVerificationToken)
+                .build();
+
+        try {
+            String payload = objectMapper.writeValueAsString(registeredEvent);
+
+            OutboxEvent event = OutboxEvent.builder()
+                    .id(eventId)
+                    .aggregateType("USER")
+                    .aggregateId(user.getId().toString())
+                    .eventType("user.registered")
+                    .eventVersion(1)
+                    .payload(payload)
+                    .status(OutboxStatus.PENDING)
+                    .retryCount(0)
+                    .createdAt(Instant.now())
+                    .correlationId(correlationId)
+                    .build();
+            outboxEventRepository.save(event);
+            log.info("Saved outbox event [user.registered] eventId={}", eventId);
+        } catch (Exception e) {
+            log.error("Failed to serialize user.registered outbox event: {}", e.getMessage(), e);
+            throw new RuntimeException("Could not record outbox event", e);
+        }
+    }
+
     private void saveOutboxEvent(String eventType, User user, String token) {
         try {
             Map<String, Object> payloadMap = new HashMap<>();
@@ -136,7 +181,7 @@ public class AuthServiceImpl implements AuthService {
         User savedUser = userRepository.save(user);
 
         // Transactional Outbox event
-        saveOutboxEvent("UserRegisteredEvent", savedUser, rawVerificationToken);
+        saveUserRegisteredOutboxEvent(savedUser, rawVerificationToken);
 
         // Immutable Audit Log
         auditLogService.logAction(
@@ -196,7 +241,7 @@ public class AuthServiceImpl implements AuthService {
                 user.setVerificationExpiresAt(Instant.now().plus(24, ChronoUnit.HOURS));
                 userRepository.save(user);
 
-                saveOutboxEvent("UserRegisteredEvent", user, rawToken);
+                saveUserRegisteredOutboxEvent(user, rawToken);
 
                 auditLogService.logAction(
                         user.getId(),

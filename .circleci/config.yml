@@ -133,6 +133,13 @@ jobs:
       - run-module-test:
           module: order-service
 
+  notification-tests:
+    docker:
+      - image: cimg/openjdk:21.0
+    steps:
+      - run-module-test:
+          module: notification-service
+
 workflows:
   version: 2
   pipeline:
@@ -152,5 +159,8 @@ workflows:
             - test-common-library
       - test-payment-service:
       - test-order-service:
+          requires:
+            - test-common-library
+      - notification-tests:
           requires:
             - test-common-library

@@ -70,6 +70,16 @@ class OutboxPublisherTests {
         assertNotNull(event.getPublishedAt());
         assertNull(event.getLastError());
         verify(outboxEventRepository).save(event);
+
+        ArgumentCaptor<ProducerRecord<String, String>> captor = ArgumentCaptor.forClass(ProducerRecord.class);
+        verify(kafkaTemplate).send(captor.capture());
+        ProducerRecord<String, String> captured = captor.getValue();
+        assertNotNull(captured.headers().lastHeader("X-Event-Type"));
+        assertEquals("order.created", new String(captured.headers().lastHeader("X-Event-Type").value()));
+        assertNotNull(captured.headers().lastHeader("X-Event-Id"));
+        assertEquals(event.getId().toString(), new String(captured.headers().lastHeader("X-Event-Id").value()));
+        assertNotNull(captured.headers().lastHeader("X-Correlation-Id"));
+        assertEquals("corr-publish-1", new String(captured.headers().lastHeader("X-Correlation-Id").value()));
     }
 
     @Test

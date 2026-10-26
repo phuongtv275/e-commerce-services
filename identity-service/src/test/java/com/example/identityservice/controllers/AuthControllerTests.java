@@ -1,6 +1,7 @@
 package com.example.identityservice.controllers;
 
 import com.ecommerce.common.constant.ErrorCode;
+import com.ecommerce.common.event.UserRegisteredEvent;
 import com.ecommerce.common.outbox.OutboxEvent;
 import com.ecommerce.common.outbox.OutboxEventRepository;
 import com.example.identityservice.models.constants.RoleName;
@@ -116,7 +117,87 @@ class AuthControllerTests {
 
         List<OutboxEvent> events = outboxEventRepository.findAll();
         assertThat(events).hasSize(1);
-        assertThat(events.get(0).getEventType()).isEqualTo("UserRegisteredEvent");
+        OutboxEvent outboxEvent = events.get(0);
+        assertThat(outboxEvent.getEventType()).isEqualTo("user.registered");
+        UserRegisteredEvent registeredPayload = objectMapper.readValue(outboxEvent.getPayload(), UserRegisteredEvent.class);
+        assertThat(registeredPayload.getEventId()).isEqualTo(outboxEvent.getId());
+        assertThat(registeredPayload.getEventType()).isEqualTo("user.registered");
+        assertThat(registeredPayload.getEventVersion()).isEqualTo(1);
+        assertThat(registeredPayload.getProducer()).isEqualTo("identity-service");
+        assertThat(registeredPayload.getUserId()).isEqualTo(user.getId());
+        assertThat(registeredPayload.getEmail()).isEqualTo("register@example.com");
+        assertThat(registeredPayload.getFullName()).isEqualTo("Nguyễn Văn A");
+        assertThat(registeredPayload.getVerificationToken()).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("POS-RESEND-01: Resend verification publishes new user.registered event with distinct eventId")
+    void testResendVerification_PublishesDistinctUserRegisteredEvent() throws Exception {
+        RegisterReq req = new RegisterReq("Trần Thị B", "resend@example.com", "Password123@", "0987654321");
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isCreated());
+
+        List<OutboxEvent> initialEvents = outboxEventRepository.findAll();
+        assertThat(initialEvents).hasSize(1);
+        OutboxEvent registerEvent = initialEvents.get(0);
+        UserRegisteredEvent regPayload = objectMapper.readValue(registerEvent.getPayload(), UserRegisteredEvent.class);
+
+        ResendVerificationReq resendReq = new ResendVerificationReq("resend@example.com");
+        mockMvc.perform(post("/api/v1/auth/resend-verification")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(resendReq)))
+                .andExpect(status().isOk());
+
+        List<OutboxEvent> allEvents = outboxEventRepository.findAll();
+        assertThat(allEvents).hasSize(2);
+
+        OutboxEvent resendEvent = allEvents.get(1);
+        assertThat(resendEvent.getEventType()).isEqualTo("user.registered");
+        assertThat(resendEvent.getId()).isNotEqualTo(registerEvent.getId());
+
+        UserRegisteredEvent resendPayload = objectMapper.readValue(resendEvent.getPayload(), UserRegisteredEvent.class);
+        assertThat(resendPayload.getEventId()).isEqualTo(resendEvent.getId());
+        assertThat(resendPayload.getEventId()).isNotEqualTo(regPayload.getEventId());
+        assertThat(resendPayload.getEventType()).isEqualTo("user.registered");
+        assertThat(resendPayload.getUserId()).isEqualTo(regPayload.getUserId());
+        assertThat(resendPayload.getEmail()).isEqualTo("resend@example.com");
+        assertThat(resendPayload.getFullName()).isEqualTo("Trần Thị B");
+        assertThat(resendPayload.getVerificationToken()).isNotBlank();
+        assertThat(resendPayload.getVerificationToken()).isNotEqualTo(regPayload.getVerificationToken());
+    }
+
+    @Test
+    @DisplayName("NEG-RESEND-01: Resend verification for already verified user does not publish new event")
+    void testResendVerification_AlreadyVerified_NoNewEvent() throws Exception {
+        RegisterReq req = new RegisterReq("Lê Văn C", "verified@example.com", "Password123@", "0987654322");
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isCreated());
+
+        OutboxEvent regEvent = outboxEventRepository.findAll().get(0);
+        UserRegisteredEvent regPayload = objectMapper.readValue(regEvent.getPayload(), UserRegisteredEvent.class);
+
+        // Verify account
+        VerifyEmailReq verifyReq = new VerifyEmailReq(regPayload.getVerificationToken());
+        mockMvc.perform(post("/api/v1/auth/verify-email")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(verifyReq)))
+                .andExpect(status().isOk());
+
+        int countBefore = outboxEventRepository.findAll().size();
+
+        // Resend request
+        ResendVerificationReq resendReq = new ResendVerificationReq("verified@example.com");
+        mockMvc.perform(post("/api/v1/auth/resend-verification")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(resendReq)))
+                .andExpect(status().isOk());
+
+        int countAfter = outboxEventRepository.findAll().size();
+        assertThat(countAfter).isEqualTo(countBefore);
     }
 
     @Test
