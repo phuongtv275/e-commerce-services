@@ -19,14 +19,17 @@ import org.springframework.util.backoff.ExponentialBackOff;
 @ConditionalOnClass(ConcurrentKafkaListenerContainerFactory.class)
 public class KafkaConsumerConfig {
 
-    @Value("${inventory.kafka.consumer.initial-backoff-ms:100}")
-    private long initialBackoffMs = 100L;
+    @Value("${inventory.kafka.consumer.initial-backoff-ms:1000}")
+    private long initialBackoffMs = 1000L;
 
-    @Value("${inventory.kafka.consumer.max-backoff-ms:400}")
-    private long maxBackoffMs = 400L;
+    @Value("${inventory.kafka.consumer.max-backoff-ms:4000}")
+    private long maxBackoffMs = 4000L;
 
     @Value("${inventory.kafka.consumer.max-attempts:3}")
     private long maxAttempts = 3L;
+
+    @Value("${inventory.kafka.consumer.jitter-ms:200}")
+    private long jitterMs = 200L;
 
     @Value("${inventory.kafka.dlt.payment-succeeded:inventory.payment-succeeded.dlt}")
     private String paymentSucceededDltTopic = "inventory.payment-succeeded.dlt";
@@ -49,10 +52,15 @@ public class KafkaConsumerConfig {
         };
     }
 
+    TopicPartition resolveDltPartition(String sourceTopic) {
+        return new TopicPartition(resolveDltTopic(sourceTopic), -1);
+    }
+
     ExponentialBackOff createBackOff() {
         ExponentialBackOff backOff = new ExponentialBackOff(initialBackoffMs, 2.0);
         backOff.setMaxInterval(maxBackoffMs);
         backOff.setMaxAttempts(maxAttempts);
+        backOff.setJitter(jitterMs);
 
         long sumIntervals = 0;
         long current = initialBackoffMs;
@@ -81,7 +89,7 @@ public class KafkaConsumerConfig {
         DefaultErrorHandler errorHandler;
         if (kafkaTemplate != null) {
             DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(kafkaTemplate,
-                    (record, ex) -> new TopicPartition(resolveDltTopic(record.topic()), record.partition()));
+                (record, ex) -> resolveDltPartition(record.topic()));
             recoverer.setFailIfSendResultIsError(true);
             errorHandler = new DefaultErrorHandler(recoverer, backOff);
         } else {
