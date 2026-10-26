@@ -168,3 +168,32 @@ Order Service owns customer shopping carts, idempotent order checkout, order lif
 - **Atomic Local Persistence & Synchronous Compensation:** Upon successful Inventory reservation, local order persistence (`PENDING` order, item snapshots, initial status history, outbox event, idempotency record completion, cart clearing) commits atomically. If local commit fails, the transaction is rolled back, the reservation is synchronously released via `POST /internal/inventory/reservations/{orderId}/release`, and the idempotency record is recorded as `FAILED`.
 - **State Machine & Kafka Event Processing:** Order state transitions (`PENDING -> CONFIRMED -> SHIPPING -> COMPLETED` or `CANCELLED`) follow strict CAS state machine logic. Kafka consumers process `payment.succeeded`, `payment.failed`, `inventory.reservation-expired`, and `inventory.reservation-commit-failed` idempotently using `common-library`'s `ProcessedEventRepository`.
 - **Internal Payment Service Contract:** Exposes `GET /internal/orders/{orderId}` strictly for `ROLE_SERVICE_PAYMENT` via `InternalServiceFilter`, omitting customer PII and providing authoritative order amount and status.
+
+---
+## 8. Payment Service Architecture (`payment-service` v0.1.1)
+
+Payment Service handles payment intent generation with VNPAY v2.1 redirect URLs, public GET IPN checksum verification, idempotent state machine transitions, manual/automated refund orchestration with atomic ceiling reservation, outbox domain events, and multi-instance reconciliation workers.
+
+### Key Architectural Invariants
+- **Source of Truth & Persistence:** PostgreSQL (`payment_db`) manages `payments`, `refunds`, and `payment_audit_logs` via Flyway migrations (`V1__init_payment_schema.sql`). Outbox events use `common-library` transactional outbox.
+- **VNPAY v2.1 Payment Intent:** `POST /api/v1/payments/initiate` fetches validated snapshot amount/currency/status from `order-service` via internal RestClient (`GET /internal/orders/{orderId}`). Generates deterministic HMAC-SHA512 signed payment URL (`vnp_Amount = VND * 100`) and stores `vnp_TxnRef` atomically. Concurrent initiate retries return the stored payment URL.
+- **Public IPN Verification & CAS Transitions:** Public callback (`GET /api/v1/payments/vnpay/ipn`) bypasses JWT at API Gateway and verifies VNPAY HMAC-SHA512 signature before database mutation. State transitions use atomic compare-and-swap (CAS) and append outbox events (`payment.succeeded`, `payment.failed`, `payment.late-success`). Replays return `RspCode: "02"`.
+- **Refund Orchestration & Hold Invariant:** Manual refunds (`POST /api/v1/admin/payments/{paymentId}/refunds`) and automated compensation reserve funds atomically (`total_refunded + refund_in_progress <= amount`) under row locks before calling VNPAY outside database transactions.
+- **Ambiguous Refund & Reconciliation:** Timeouts or pending VNPAY responses retain the hold; no duplicate refund command is issued. Reconciliation workers query VNPAY (`vnp_Command=querydr`) with fresh request IDs. After 3 indeterminate attempts, transitions to `MANUAL_RECONCILIATION_REQUIRED` for Finance/Admin resolution (`POST /api/v1/admin/payments/{paymentId}/refunds/{refundId}/resolve`).
+- **Saga Consumers & Idempotency:** Kafka consumers for `order.cancelled` (auto-refund when `refundRequired=true`), `inventory.reservation-commit-failed` (Saga compensation), `inventory.reservation-expired` (payment expiration), and `payment.late-success` (automatic refund after a late capture) enforce idempotency using `processed_events` and domain idempotency keys (`AUTO_REFUND:<orderId>`).
+- **Zero-Trust Network Isolation:** Payment service port `8085` remains strictly internal. Gateway routes only public API (`/api/v1/payments/**`, `/api/v1/admin/payments/**`) and public GET IPN (`/api/v1/payments/vnpay/ipn`).
+
+### Deployment Configuration (`payment-service.yml`)
+- **Required Environment Variables:**
+  - `VNPAY_TMN_CODE` (`vnpay.tmn-code`): Merchant terminal code issued by VNPAY.
+  - `VNPAY_HASH_SECRET` (`vnpay.hash-secret`): HMAC-SHA512 secret key (injected via secret store).
+  - `VNPAY_IPN_URL` (`vnpay.ipn-url`): Publicly accessible HTTPS IPN callback URL (`https://<domain>/api/v1/payments/vnpay/ipn`).
+  - `VNPAY_RETURN_URL` (`vnpay.return-url`): Frontend redirect URL after checkout completion.
+  - `VNPAY_IP_ADDRESS` (`vnpay.ip-address`): API-calling server outbound egress IP for merchant refund and querydr calls.
+- **Default Settings:**
+  - `vnpay.pay-url`: `https://sandbox.vnpayment.vn/paymentv2/vpcpay.html`
+  - `vnpay.api-url`: `https://sandbox.vnpayment.vn/merchant_webapi/api/transaction`
+  - `vnpay.version`: `2.1.0`
+  - `vnpay.locale`: `vn`
+  - `vnpay.order-type`: `other`
+  - `vnpay.expire-minutes`: `15` (aligned with inventory reservation TTL)

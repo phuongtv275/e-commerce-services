@@ -17,7 +17,7 @@ public class GatewayRoutesConfig {
             @Value("${INVENTORY_SERVICE_URL:localhost:8083}") String inventoryUrl,
             @Value("${ORDER_SERVICE_URL:localhost:8084}") String orderUrl,
             @Value("${PAYMENT_SERVICE_URL:localhost:8085}") String paymentUrl,
-            @Value("${NOTIFICATION_SERVICE_URL:localhost:8086}") String notifUrl
+            @Value("${NOTIFICATION_SERVICE_URL:notification-service:8086}") String notifUrl
     ) {
         String identityUri = identityUrl.startsWith("http") ? identityUrl : "http://" + identityUrl;
         String catalogUri = catalogUrl.startsWith("http") ? catalogUrl : "http://" + catalogUrl;
@@ -49,7 +49,8 @@ public class GatewayRoutesConfig {
                 .route("order-service-routes", r -> r.path("/api/v1/orders/**")
                         .metadata("targetService", "order-service")
                         .uri(orderUri))
-                .route("payment-momo-ipn-webhook", r -> r.path("/api/v1/payments/momo/ipn")
+                .route("payment-vnpay-ipn-webhook", r -> r.path("/api/v1/payments/vnpay/ipn")
+                        .and().method("GET")
                         .metadata("targetService", "payment-service")
                         .uri(paymentUri))
                 .route("payment-service-routes", r -> r.path("/api/v1/payments/**", "/api/v1/admin/payments/**")

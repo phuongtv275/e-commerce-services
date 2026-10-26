@@ -25,7 +25,9 @@ public class SanitizationGlobalFilter implements WebFilter, Ordered {
             "X-User-Email",
             "X-Gateway-Assertion",
             "X-Internal-Service-Key",
-            "X-Calling-Service"
+            "X-Calling-Service",
+            "X-Trusted-Client-IP",
+            "X-Forwarded-For"
     );
 
     @Override
@@ -35,8 +37,18 @@ public class SanitizationGlobalFilter implements WebFilter, Ordered {
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
+        java.net.InetSocketAddress remoteAddress = exchange.getRequest().getRemoteAddress();
+        String clientIp = (remoteAddress != null && remoteAddress.getAddress() != null)
+                ? remoteAddress.getAddress().getHostAddress()
+                : null;
+
         ServerHttpRequest mutatedRequest = exchange.getRequest().mutate()
-                .headers(httpHeaders -> SENSITIVE_HEADERS.forEach(httpHeaders::remove))
+                .headers(httpHeaders -> {
+                    SENSITIVE_HEADERS.forEach(httpHeaders::remove);
+                    if (clientIp != null && !clientIp.isBlank()) {
+                        httpHeaders.set("X-Trusted-Client-IP", clientIp);
+                    }
+                })
                 .build();
 
         return chain.filter(exchange.mutate().request(mutatedRequest).build());

@@ -69,11 +69,11 @@ spring:
           metadata:
             targetService: order-service
 
-        - id: payment-momo-ipn-webhook
+        - id: payment-vnpay-ipn-webhook
           uri: http://${PAYMENT_SERVICE_URL:localhost:8085}
           predicates:
-            - Path=/api/v1/payments/momo/ipn
-            - Method=POST
+            - Path=/api/v1/payments/vnpay/ipn
+            - Method=GET
           metadata:
             targetService: payment-service
 
@@ -136,7 +136,7 @@ jwt:
     - /api/v1/catalog/categories/**
     - /api/v1/catalog/brands/**
     - /api/v1/catalog/search/**
-    - /api/v1/payments/momo/ipn
+    - /api/v1/payments/vnpay/ipn
     - /actuator/**
 
 gateway:

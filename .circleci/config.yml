@@ -103,6 +103,13 @@ jobs:
       - run-module-test:
           module: inventory-service
 
+  test-payment-service:
+    docker:
+      - image: cimg/openjdk:21.0
+    steps:
+      - run-module-test:
+          module: payment-service
+
   test-order-service:
     docker:
       - image: cimg/openjdk:21.0
@@ -143,6 +150,7 @@ workflows:
       - test-inventory-service:
           requires:
             - test-common-library
+      - test-payment-service:
       - test-order-service:
           requires:
             - test-common-library
