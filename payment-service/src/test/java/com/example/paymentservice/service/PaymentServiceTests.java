@@ -173,7 +173,7 @@ class PaymentServiceTests {
 
     @Test
     @DisplayName("Positive: handleIpnCallback commits SUCCEEDED on 00/00 and emits Outbox event")
-    void testHandleIpnSuccess() {
+    void testHandleIpnSuccess() throws Exception {
         Map<String, String> queryParams = new HashMap<>();
         queryParams.put("vnp_TmnCode", "TESTTMN");
         queryParams.put("vnp_TxnRef", "TXN123");
@@ -187,6 +187,7 @@ class PaymentServiceTests {
 
         when(vnpayClient.verifyIpnSignature(queryParams)).thenReturn(true);
         when(vnPayProperties.getTmnCode()).thenReturn("TESTTMN");
+        when(objectMapper.writeValueAsString(anyMap())).thenReturn("{\"vnp_IpAddr\":\"[REDACTED]\"}");
 
         Payment payment = Payment.builder()
                 .id(UUID.randomUUID())

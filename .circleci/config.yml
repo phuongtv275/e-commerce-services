@@ -110,6 +110,29 @@ jobs:
       - run-module-test:
           module: payment-service
 
+  test-order-service:
+    docker:
+      - image: cimg/openjdk:21.0
+        environment:
+          ORDER_TEST_DB_URL: jdbc:postgresql://postgres:5432/order_db
+          ORDER_TEST_DB_HOST: postgres
+      - image: postgres:16-alpine
+        environment:
+          POSTGRES_DB: order_db
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+    steps:
+      - run:
+          name: Wait for PostgreSQL
+          command: |
+            for attempt in $(seq 1 60); do
+              (echo > /dev/tcp/postgres/5432) >/dev/null 2>&1 && exit 0
+              sleep 1
+            done
+            exit 1
+      - run-module-test:
+          module: order-service
+
 workflows:
   version: 2
   pipeline:
@@ -128,5 +151,6 @@ workflows:
           requires:
             - test-common-library
       - test-payment-service:
+      - test-order-service:
           requires:
             - test-common-library

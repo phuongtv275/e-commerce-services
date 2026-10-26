@@ -1,5 +1,6 @@
 package com.example.identityservice.models.repositories;
 
+import com.example.identityservice.models.dto.res.InternalAddressRes;
 import com.example.identityservice.models.entities.Address;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -20,6 +21,28 @@ public interface AddressRepository extends JpaRepository<Address, UUID> {
     Optional<Address> findByIdAndUserIdAndDeletedAtIsNull(UUID id, UUID userId);
 
     Optional<Address> findByUserIdAndIsDefaultTrueAndDeletedAtIsNull(UUID userId);
+
+    @Query("""
+            SELECT new com.example.identityservice.models.dto.res.InternalAddressRes(
+                a.id,
+                a.user.id,
+                a.recipientName,
+                a.phone,
+                a.addressLine1,
+                a.addressLine2,
+                a.district,
+                a.city,
+                a.country
+            )
+            FROM Address a
+            WHERE a.id = :addressId
+              AND a.user.id = :userId
+              AND a.deletedAt IS NULL
+              AND a.user.deletedAt IS NULL
+            """)
+    Optional<InternalAddressRes> findInternalAddressByIdAndUserId(
+            @Param("addressId") UUID addressId,
+            @Param("userId") UUID userId);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Transactional

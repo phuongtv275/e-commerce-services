@@ -5,6 +5,8 @@ import com.ecommerce.common.exception.BusinessException;
 import com.ecommerce.common.exception.ConflictException;
 import com.ecommerce.common.exception.ResourceNotFoundException;
 import com.ecommerce.common.exception.ValidationException;
+import com.example.inventoryservice.dto.BatchStockResponse;
+import com.example.inventoryservice.dto.SkuStockAvailability;
 import com.example.inventoryservice.entity.MovementType;
 import com.example.inventoryservice.entity.Stock;
 import com.example.inventoryservice.entity.StockMovement;
@@ -25,9 +27,11 @@ import jakarta.persistence.criteria.Predicate;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -58,6 +62,51 @@ public class StockServiceImpl implements StockService {
                 stock.getVersion(),
                 stock.getUpdatedAt()
         );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public BatchStockResponse getBatchStockAvailability(List<UUID> skuIds) {
+        if (skuIds == null || skuIds.isEmpty()) {
+            throw new ValidationException("skuIds list cannot be empty");
+        }
+        if (skuIds.size() > 100) {
+            throw new ValidationException("skuIds list cannot exceed 100 items");
+        }
+        for (UUID skuId : skuIds) {
+            if (skuId == null) {
+                throw new ValidationException("skuId cannot be null");
+            }
+        }
+
+        Warehouse warehouse = resolveWarehouse(null);
+
+        List<UUID> distinctSkuIds = skuIds.stream().distinct().toList();
+        List<Stock> stocks = stockRepository.findBySkuIdInAndWarehouseId(distinctSkuIds, warehouse.getId());
+
+        Map<UUID, Stock> stockMap = stocks.stream()
+                .collect(Collectors.toMap(Stock::getSkuId, s -> s, (s1, s2) -> s1));
+
+        List<SkuStockAvailability> items = new ArrayList<>();
+        List<UUID> missingSkuIds = new ArrayList<>();
+
+        for (UUID skuId : distinctSkuIds) {
+            Stock stock = stockMap.get(skuId);
+            if (stock != null) {
+                int available = stock.getAvailable() != null ? stock.getAvailable() : stock.getAvailableQuantity();
+                items.add(SkuStockAvailability.builder()
+                        .skuId(skuId)
+                        .availableQuantity(available)
+                        .build());
+            } else {
+                missingSkuIds.add(skuId);
+            }
+        }
+
+        return BatchStockResponse.builder()
+                .items(items)
+                .missingSkuIds(missingSkuIds)
+                .build();
     }
 
     @Override

@@ -108,7 +108,7 @@ class PaymentControllerTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.orderId").value(orderId.toString()))
                 .andExpect(jsonPath("$.data.paymentUrl").value("https://sandbox.vnpayment.vn/pay?token=xyz"));
 
@@ -139,7 +139,7 @@ class PaymentControllerTests {
         mockMvc.perform(get("/api/v1/payments/" + paymentId)
                         .with(user(customerId.toString()).roles("CUSTOMER")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.paymentId").value(paymentId.toString()))
                 .andExpect(jsonPath("$.data.status").value("SUCCEEDED"));
     }
@@ -156,6 +156,6 @@ class PaymentControllerTests {
         mockMvc.perform(get("/api/v1/payments/" + paymentId)
                         .with(user(customerId.toString()).roles("CUSTOMER")))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.success").value(false));
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
     }
 }

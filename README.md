@@ -14,11 +14,11 @@ Backend Microservices platform for multi-channel e-commerce system built with Sp
 | :--- | :---: | :--- | :--- |
 | **common-library** | N/A | Shared Library: API Response, Global Exception, Tracing & Zero-Trust Filters, Transactional Outbox, Event Contracts, Idempotency | Plain Java Library (`java-library`), Java 21, Spring Boot BOM |
 | **api-gateway** | `8080` | Single Public Entrypoint, Centralized Routing, Header Sanitization, JWT Auth & Blacklist, RSA Assertion Signing (Audience Binding), Redis Rate Limiter, W3C CORS & Security Headers | Spring Cloud Gateway (WebFlux), Reactive Redis, Eureka Client |
-| **identity-service** | Internal (`8081`) | Authentication, Authorization, Users, IAM, Audit Logs, Inter-Service Auth (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`identity_db`), Redis Blacklist, Flyway |
-| **catalog-service** | Internal (`8082`) | Products, Categories, Brands, SKUs, Elasticsearch Search & Safe Reindexing (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`catalog_db`), Flyway, Elasticsearch 8.13, Spring Kafka |
-| **inventory-service** | Internal (`8083`) | Stock ledger, reservations, expiry and oversell-safe stock updates | Spring Boot WebMVC, PostgreSQL (`inventory_db`), Kafka |
-| **order-service** | Internal (`8084`) | Cart, Orders, Checkout (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`order_db`), Kafka |
-| **payment-service** | Internal (`8085`) | VNPAY Payment Intent & IPN, Refunds & Compensation, Reconciliation (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`payment_db`), Kafka, Flyway |
+| **identity-service** | Internal (`8081`) | v0.1.15: Authentication, Authorization, Users, IAM, Audit Logs, Inter-Service Auth, Internal Address Lookup (`GET /internal/users/{userId}/addresses/{addressId}`) (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`identity_db`), Redis Blacklist, Flyway |
+| **catalog-service** | Internal (`8082`) | v0.1.1: Products, Categories, Brands, SKUs, Elasticsearch Search & Safe Reindexing (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`catalog_db`), Flyway, Elasticsearch 8.13, Spring Kafka |
+| **inventory-service** | Internal (`8083`) | v0.1.2: Stock ledger, reservations, expiry, oversell-safe stock updates, Batch Stock Availability (`POST /internal/inventory/stocks/batch`) | Spring Boot WebMVC, PostgreSQL (`inventory_db`), Kafka |
+| **order-service** | Internal (`8084`) | v0.1.1: Cart, Orders, Checkout, Outbox, Idempotency, Order Lifecycle State Machine (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`order_db`), Kafka |
+| **payment-service** | Internal (`8085`) | Payment Transactions, Refunds (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`payment_db`) |
 | **notification-service** | Internal (`8086`) | Email, SMS, Webhook Notifications (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`notification_db`), MailHog |
 | **eureka-server** | `8761` | Service Registry & Discovery | Spring Cloud Netflix Eureka Server |
 | **config-server** | `8888` | Centralized Configuration Management | Spring Cloud Config Server (`native` profile) |
@@ -102,7 +102,7 @@ docker compose -p ecom -f docker-compose.yml -f docker-compose.apps.yml up -d --
 
 ---
 
-## 5. Identity Service Architecture (`identity-service`)
+## 5. Identity Service Architecture (`identity-service` v0.1.15)
 
 Identity Service handles authentication, authorization, user profiles, address books, and administrative IAM capabilities with zero-trust inter-service boundaries.
 
@@ -112,7 +112,7 @@ Identity Service handles authentication, authorization, user profiles, address b
 - **Token Invalidation:** Logout invalidates access tokens using Redis TTL-based blacklisting and immediately revokes active refresh tokens.
 - **Anti-BOLA Protection:** All address book operations (`GET`, `PUT`, `DELETE`, `PATCH /default`) strictly enforce `user_id == currentUserId`.
 - **Atomic Password Resets:** Reset tokens are consumed using atomic CAS SQL updates (`UPDATE ... SET used = true WHERE token_hash = :hash AND used = false AND expires_at > now()`) preventing concurrent replay.
-- **Inter-Service Security:** Internal endpoints (`/internal/**`) require caller-specific keys (`X-Calling-Service` & `X-Internal-Service-Key`), assigning caller-scoped roles (`ROLE_SERVICE_ORDER`, `ROLE_SERVICE_NOTIFICATION`). Rejects `X-Gateway-Assertion` to enforce private network boundary.
+- **Inter-Service Security & Address Lookup:** Internal endpoints (`/internal/**`) require caller-specific keys (`X-Calling-Service` & `X-Internal-Service-Key`), assigning caller-scoped roles (`ROLE_SERVICE_ORDER`, `ROLE_SERVICE_NOTIFICATION`). Includes `GET /internal/users/{userId}/addresses/{addressId}` specifically permitted for `ROLE_SERVICE_ORDER` returning address snapshots without leaking foreign addresses. Rejects `X-Gateway-Assertion` to enforce private network boundary.
 - **Audit Logging:** Administrative IAM modifications (role assignment/revocation) and security-critical operations are recorded in `audit_logs` with actor details, deltas, and correlation IDs.
 - **E2E Integration Verification:** 25 production-grade test scenarios across public authentication, session security, BOLA prevention, RBAC, and zero-trust internal endpoints.
 
@@ -146,6 +146,30 @@ Catalog Service manages products, hierarchical categories, brands, SKUs, and pro
 
 ---
 
+## 7.1. Inventory Service Architecture (`inventory-service` v0.1.2)
+
+Inventory Service manages the multi-warehouse stock ledger, stock adjustments, reservation lifecycle, and zero-trust service queries.
+
+### Key Architectural Invariants
+- **Stock Ledger & Reservations:** Manages `stocks`, `reservations`, `reservation_items`, and `stock_movements` in PostgreSQL (`inventory_db`). Stock reservations are created atomically for up to 100 SKUs with a 15-minute default TTL via `POST /internal/inventory/reservations`.
+- **Internal Batch Stock Availability:** Exposes `POST /internal/inventory/stocks/batch` for `ROLE_SERVICE_ORDER` returning SKU availability (`availableQuantity`) and missing SKU IDs across active warehouses without holding or mutating stock.
+- **Compensating Release & Event Recovery:** Supports synchronous idempotent reservation release (`POST /internal/inventory/reservations/{orderId}/release`) and emits `inventory.reservation-expired` or `inventory.reservation-commit-failed` for downstream reconciliation.
+
+---
+
+## 8. Order Service Architecture (`order-service` v0.1.1)
+
+Order Service owns customer shopping carts, idempotent order checkout, order lifecycle management, transactional outbox publishing, and internal order queries.
+
+### Key Architectural Invariants
+- **Database & Persistence:** Dedicated PostgreSQL database (`order_db`) with Flyway migrations (`V1__init_order_schema.sql`) managing `carts`, `cart_items`, `orders`, `order_items`, `order_status_history`, `idempotency_records`, `outbox_events`, and `processed_events`.
+- **Owner-Scoped Security & Tenant Isolation:** Current customer ID is derived strictly from trusted Gateway-signed assertion tokens via `TrustedHeaderAuthenticationFilter` and `SecurityUtils`. Customer APIs reject spoofed customer IDs and scope all database operations by authenticated customer UUID.
+- **Idempotent Checkout Boundary:** Checkout requests require an `Idempotency-Key` header and payload fingerprinting. Network calls to Identity (address snapshot), Catalog (current price snapshot), and Inventory (stock reservation) occur strictly outside local database transactions.
+- **Atomic Local Persistence & Synchronous Compensation:** Upon successful Inventory reservation, local order persistence (`PENDING` order, item snapshots, initial status history, outbox event, idempotency record completion, cart clearing) commits atomically. If local commit fails, the transaction is rolled back, the reservation is synchronously released via `POST /internal/inventory/reservations/{orderId}/release`, and the idempotency record is recorded as `FAILED`.
+- **State Machine & Kafka Event Processing:** Order state transitions (`PENDING -> CONFIRMED -> SHIPPING -> COMPLETED` or `CANCELLED`) follow strict CAS state machine logic. Kafka consumers process `payment.succeeded`, `payment.failed`, `inventory.reservation-expired`, and `inventory.reservation-commit-failed` idempotently using `common-library`'s `ProcessedEventRepository`.
+- **Internal Payment Service Contract:** Exposes `GET /internal/orders/{orderId}` strictly for `ROLE_SERVICE_PAYMENT` via `InternalServiceFilter`, omitting customer PII and providing authoritative order amount and status.
+
+---
 ## 8. Payment Service Architecture (`payment-service` v0.1.1)
 
 Payment Service handles payment intent generation with VNPAY v2.1 redirect URLs, public GET IPN checksum verification, idempotent state machine transitions, manual/automated refund orchestration with atomic ceiling reservation, outbox domain events, and multi-instance reconciliation workers.

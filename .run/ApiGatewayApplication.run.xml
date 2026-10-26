@@ -1,10 +1,10 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="ApiGatewayApplication" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
+    <envFilePaths>
+      <option value="$PROJECT_DIR$/.env" />
+    </envFilePaths>
     <envs>
-      <env name="REDIS_HOST" value="localhost" />
-      <env name="REDIS_PASSWORD" value="rikkeiacademy" />
-      <env name="IDENTITY_SERVICE_URL" value="localhost:8081" />
-      <env name="EUREKA_SERVER_URL" value="http://localhost:8761/eureka/" />
+      <env name="SPRING_PROFILES_ACTIVE" value="dev" />
     </envs>
     <option name="FRAME_DEACTIVATION_UPDATE_POLICY" value="UpdateClassesAndResources" />
     <module name="e-commerce-services.api-gateway.main" />
