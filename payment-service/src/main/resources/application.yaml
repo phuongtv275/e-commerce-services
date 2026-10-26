@@ -6,6 +6,32 @@ spring:
     name: payment-service
   config:
     import: "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
+  kafka:
+    consumer:
+      group-id: ${payment.kafka.consumer-group:payment-service-group}
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+    listener:
+      ack-mode: manual
+
+payment:
+  kafka:
+    consumer-group: payment-service-group
+    topic:
+      payment-late-success: payment.late-success
+      order-cancelled: order.cancelled
+      reservation-commit-failed: inventory.reservation-commit-failed
+      reservation-expired: inventory.reservation-expired
+    dlt:
+      payment-late-success: payment.payment-late-success.dlt
+      order-cancelled: payment.order-cancelled.dlt
+      reservation-commit-failed: payment.reservation-commit-failed.dlt
+      reservation-expired: payment.reservation-expired.dlt
+    consumer:
+      max-attempts: 3
+      initial-backoff-ms: 1000
+      max-backoff-ms: 4000
+      jitter-ms: 200
 
 eureka:
   client:
@@ -20,3 +46,14 @@ management:
   endpoint:
     health:
       show-details: always
+
+security:
+  gateway-assertion:
+    public-key: "${GATEWAY_ASSERTION_PUBLIC_KEY:-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAr+qpeFC7N9yYQYKyKYd3\nwWHnhth0aithJSysJifsaz1k3n0QKMOejmJxK8BrGwYGSH7tCjlRkOUPG5h4jWgG\nuv3CgnCJR8hzSx362wYkcykI4e0Umjya3ebd2ArPKN0NgZ0xfIphtsS+OQCKFOF5\nFcZr/T14qP62Dtr+8K91VltTiNbOTxrGxBLfhxf9CZ9iSYZy3xnQW2lwL+wblp2p\ns8qOBLvCp8QP81Ffa7M8IM6qTX24g5FnmCub/jPJ/9oqJNFvRw5hRHQvNLvY72P9\na+nN4Jg4N36A2djbAR9Ws4kWkB4Inrbwg/kVrxWafrPoXCZG+aPcF3pbJ1Sz333E\nFwIDAQAB\n-----END PUBLIC KEY-----}"
+  internal-service-keys:
+    order-service: "${INTERNAL_KEY_ORDER:order-service-secret-key-32chars}"
+    notification-service: "${INTERNAL_KEY_NOTIFICATION:notification-service-secret-key-32c}"
+
+logging:
+  pattern:
+    correlation: "[%X{correlationId:-}] "

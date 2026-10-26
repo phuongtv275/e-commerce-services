@@ -1,5 +1,6 @@
 package com.example.inventoryservice.consumer;
 
+import com.ecommerce.common.constant.SecurityConstants;
 import com.ecommerce.common.event.OrderCancelledEvent;
 import com.ecommerce.common.idempotency.IdempotentConsumerHelper;
 import com.example.inventoryservice.entity.InventoryQuarantineLog;
@@ -9,6 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;
@@ -37,6 +39,12 @@ public class OrderEventConsumer {
     public void consumeOrderCancelled(ConsumerRecord<String, String> record, Acknowledgment ack) {
         OrderCancelledEvent event;
         try {
+            var envelope = objectMapper.readTree(record.value());
+            if (envelope == null || !envelope.isObject()
+                    || !envelope.path("eventId").isTextual() || envelope.path("eventId").asText().isBlank()
+                    || !envelope.path("eventVersion").canConvertToInt() || envelope.path("eventVersion").asInt() != 1) {
+                throw new IllegalArgumentException("Invalid event envelope");
+            }
             event = objectMapper.readValue(record.value(), OrderCancelledEvent.class);
             validateOrderCancelledEvent(event);
         } catch (Exception e) {
@@ -49,12 +57,19 @@ public class OrderEventConsumer {
         String eventId = event.getEventId().toString();
         String correlationId = event.getCorrelationId();
 
-        idempotentConsumerHelper.processIdempotent(eventId, consumerGroup, event, evt -> {
-            reservationService.restockForEvent(evt.getOrderId(), evt.getReason(), correlationId);
-        });
+        try {
+            if (correlationId != null) {
+                MDC.put(SecurityConstants.MDC_CORRELATION_ID, correlationId);
+            }
+            idempotentConsumerHelper.processIdempotent(eventId, consumerGroup, event, evt -> {
+                reservationService.restockForEvent(evt.getOrderId(), evt.getReason(), correlationId);
+            });
 
-        if (ack != null) {
-            ack.acknowledge();
+            if (ack != null) {
+                ack.acknowledge();
+            }
+        } finally {
+            MDC.remove(SecurityConstants.MDC_CORRELATION_ID);
         }
     }
 
@@ -62,8 +77,11 @@ public class OrderEventConsumer {
         if (event == null) {
             throw new IllegalArgumentException("Payload cannot be null");
         }
-        if (event.getEventType() != null && !"order.cancelled".equals(event.getEventType())) {
+        if (event.getEventType() == null || !"order.cancelled".equals(event.getEventType())) {
             throw new IllegalArgumentException("Invalid eventType: " + event.getEventType());
+        }
+        if (event.getEventVersion() != 1) {
+            throw new IllegalArgumentException("Unsupported eventVersion: " + event.getEventVersion());
         }
         if (event.getOrderId() == null) {
             throw new IllegalArgumentException("orderId is required");

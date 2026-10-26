@@ -50,6 +50,8 @@ services:
       REDIS_PASSWORD: rikkeiacademy
       JWT_SECRET: ${JWT_SECRET}
       GATEWAY_ASSERTION_PUBLIC_KEY: ${GATEWAY_ASSERTION_PUBLIC_KEY}
+      INTERNAL_KEY_ORDER: ${INTERNAL_KEY_ORDER}
+      INTERNAL_KEY_NOTIFICATION: ${INTERNAL_KEY_NOTIFICATION}
     depends_on:
       config-server:
         condition: service_healthy
@@ -76,6 +78,7 @@ services:
       ELASTICSEARCH_URIS: http://elasticsearch:9200
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       GATEWAY_ASSERTION_PUBLIC_KEY: ${GATEWAY_ASSERTION_PUBLIC_KEY}
+      INTERNAL_KEY_ORDER: ${INTERNAL_KEY_ORDER}
     depends_on:
       config-server:
         condition: service_healthy
@@ -104,6 +107,7 @@ services:
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       GATEWAY_ASSERTION_PUBLIC_KEY: ${GATEWAY_ASSERTION_PUBLIC_KEY}
       INTERNAL_KEY_ORDER: ${INTERNAL_KEY_ORDER}
+      INTERNAL_KEY_PAYMENT: ${INTERNAL_KEY_PAYMENT}
     depends_on:
       config-server:
         condition: service_healthy
@@ -112,6 +116,8 @@ services:
       postgres:
         condition: service_healthy
       kafka:
+        condition: service_started
+      order-service:
         condition: service_started
     networks:
       - ecom_backend_net
@@ -154,6 +160,21 @@ services:
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/payment_db
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      GATEWAY_ASSERTION_PUBLIC_KEY: ${GATEWAY_ASSERTION_PUBLIC_KEY}
+      INTERNAL_KEY_PAYMENT: ${INTERNAL_KEY_PAYMENT}
+      ORDER_SERVICE_URL: http://order-service:8084
+      VNPAY_TMN_CODE: ${VNPAY_TMN_CODE}
+      VNPAY_HASH_SECRET: ${VNPAY_HASH_SECRET}
+      VNPAY_IPN_URL: ${VNPAY_IPN_URL}
+      VNPAY_RETURN_URL: ${VNPAY_RETURN_URL}
+      VNPAY_IP_ADDRESS: ${VNPAY_IP_ADDRESS}
+      VNPAY_PAY_URL: ${VNPAY_PAY_URL:-https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+      VNPAY_API_URL: ${VNPAY_API_URL:-https://sandbox.vnpayment.vn/merchant_webapi/api/transaction}
+      VNPAY_VERSION: ${VNPAY_VERSION:-2.1.0}
+      VNPAY_ORDER_TYPE: ${VNPAY_ORDER_TYPE:-other}
+      VNPAY_LOCALE: ${VNPAY_LOCALE:-vn}
+      VNPAY_EXPIRE_MINUTES: ${VNPAY_EXPIRE_MINUTES:-15}
     depends_on:
       config-server:
         condition: service_healthy
@@ -161,6 +182,10 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      kafka:
+        condition: service_started
+      order-service:
+        condition: service_started
     networks:
       - ecom_backend_net
       - ecom_data_net

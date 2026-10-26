@@ -152,4 +152,16 @@ class OrderEventConsumerTests {
         verify(quarantineLogRepository).save(any(InventoryQuarantineLog.class));
         verify(acknowledgment).acknowledge();
     }
+
+    @Test
+    @DisplayName("Negative: Payload with unsupported eventVersion (version 2) is quarantined and acknowledged")
+    void testOrderCancelled_UnsupportedVersion_QuarantinedAndAcked() {
+        String invalidPayload = "{\"eventId\":\"" + UUID.randomUUID() + "\",\"eventType\":\"order.cancelled\",\"eventVersion\":2,\"orderId\":\"" + UUID.randomUUID() + "\"}";
+        ConsumerRecord<String, String> record = new ConsumerRecord<>("order.cancelled", 0, 0, "some-key", invalidPayload);
+
+        consumer.consumeOrderCancelled(record, acknowledgment);
+
+        verify(quarantineLogRepository).save(any(InventoryQuarantineLog.class));
+        verify(acknowledgment).acknowledge();
+    }
 }

@@ -33,7 +33,10 @@ class SanitizationGlobalFilterTests {
                 .header("X-Gateway-Assertion", "fake.assertion.token")
                 .header("X-Internal-Service-Key", "stolen-internal-key")
                 .header("X-Calling-Service", "evil-service")
+                .header("X-Forwarded-For", "203.0.113.195")
+                .header("X-Trusted-Client-IP", "1.2.3.4")
                 .header("X-Custom-Allowed-Header", "allowed-value")
+                .remoteAddress(new java.net.InetSocketAddress("192.168.1.100", 54321))
                 .build();
 
         MockServerWebExchange exchange = MockServerWebExchange.from(request);
@@ -50,6 +53,10 @@ class SanitizationGlobalFilterTests {
             assertNull(headers.getFirst("X-Gateway-Assertion"));
             assertNull(headers.getFirst("X-Internal-Service-Key"));
             assertNull(headers.getFirst("X-Calling-Service"));
+            assertNull(headers.getFirst("X-Forwarded-For"));
+
+            // Must set gateway-owned X-Trusted-Client-IP from socket remote address
+            assertEquals("192.168.1.100", headers.getFirst("X-Trusted-Client-IP"));
 
             assertEquals("allowed-value", headers.getFirst("X-Custom-Allowed-Header"));
 

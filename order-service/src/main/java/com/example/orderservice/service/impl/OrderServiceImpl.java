@@ -448,8 +448,35 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public void handleReservationCommitFailed(UUID orderId, String reason) {
-        transitionOrderStatus(orderId, OrderStatus.PENDING, OrderStatus.CANCELLED,
-                "Inventory reservation commit failed: " + reason, "inventory-service", false);
+        Order order = orderRepository.findById(orderId).orElse(null);
+        if (order == null) {
+            throw new ResourceNotFoundException("Order", orderId);
+        }
+
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            log.info("Order {} already in target status CANCELLED, duplicate delivery no-op", orderId);
+            return;
+        }
+
+        if (order.getStatus() == OrderStatus.COMPLETED) {
+            log.warn("Order {} is in terminal status {}, cannot transition to CANCELLED", orderId, order.getStatus());
+            return;
+        }
+
+        OrderStatus currentStatus = order.getStatus();
+        boolean refundRequired;
+        if (currentStatus == OrderStatus.PENDING) {
+            refundRequired = false;
+        } else if (currentStatus == OrderStatus.CONFIRMED) {
+            refundRequired = true;
+        } else {
+            log.warn("Order {} in status {} is not eligible for reservation commit-failed transition", orderId, currentStatus);
+            return;
+        }
+
+        String cancelReason = "Inventory reservation commit failed: " + (reason != null ? reason : "");
+        transitionOrderStatus(orderId, currentStatus, OrderStatus.CANCELLED,
+                cancelReason, "inventory-service", refundRequired);
     }
 
     private void transitionOrderStatus(UUID orderId, OrderStatus expectedOldStatus, OrderStatus newStatus,

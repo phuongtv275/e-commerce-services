@@ -1,5 +1,7 @@
 package com.example.inventoryservice.consumer;
 
+import com.ecommerce.common.constant.ErrorCode;
+import com.ecommerce.common.constant.SecurityConstants;
 import com.ecommerce.common.event.PaymentFailedEvent;
 import com.ecommerce.common.event.PaymentSucceededEvent;
 import com.ecommerce.common.exception.ConflictException;
@@ -14,6 +16,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;
@@ -39,6 +42,9 @@ public class PaymentEventConsumer {
     @Value("${inventory.kafka.consumer-group:inventory-reservation-group}")
     private String consumerGroup;
 
+    @Value("${inventory.kafka.consumer.max-attempts:3}")
+    private int maxRetries = 3;
+
     @KafkaListener(
             topics = "${inventory.kafka.topic.payment-succeeded:payment.succeeded}",
             groupId = "${inventory.kafka.consumer-group:inventory-reservation-group}"
@@ -50,6 +56,7 @@ public class PaymentEventConsumer {
 
         PaymentSucceededEvent event;
         try {
+            validateRawEnvelope(record.value(), "payment.succeeded");
             event = objectMapper.readValue(record.value(), PaymentSucceededEvent.class);
             validatePaymentSucceededEvent(event);
         } catch (Exception e) {
@@ -62,36 +69,43 @@ public class PaymentEventConsumer {
         String eventId = event.getEventId() != null ? event.getEventId().toString() : record.key();
         String correlationId = event.getCorrelationId();
 
-        idempotentConsumerHelper.processIdempotent(eventId, consumerGroup, event, evt -> {
-            UUID orderId = evt.getOrderId();
-            Optional<Reservation> resOpt = reservationRepository.findByOrderId(orderId);
+        try {
+            if (correlationId != null) {
+                MDC.put(SecurityConstants.MDC_CORRELATION_ID, correlationId);
+            }
+            idempotentConsumerHelper.processIdempotent(eventId, consumerGroup, event, evt -> {
+                UUID orderId = evt.getOrderId();
+                Optional<Reservation> resOpt = reservationRepository.findByOrderId(orderId);
 
-            if (resOpt.isEmpty()) {
-                int attempt = deliveryAttempt != null ? deliveryAttempt : 1;
-                if (attempt < 3) {
-                    throw new RuntimeException("Reservation not found for orderId " + orderId + ", attempt " + attempt + ", retrying");
-                } else {
-                    reservationService.quarantineCommitFailure(
-                            orderId, "RESERVATION_NOT_FOUND_AFTER_PAYMENT", record.value(), correlationId);
+                if (resOpt.isEmpty()) {
+                    int attempt = deliveryAttempt != null ? deliveryAttempt : 1;
+                    if (attempt <= maxRetries) {
+                        throw new RuntimeException("Reservation not found for orderId " + orderId + ", attempt " + attempt + ", retrying");
+                    } else {
+                        reservationService.quarantineCommitFailure(
+                                orderId, "RESERVATION_NOT_FOUND_AFTER_PAYMENT", record.value(), correlationId);
+                        return;
+                    }
+                }
+
+                Reservation reservation = resOpt.get();
+                if (reservation.getStatus() == ReservationStatus.COMMITTED) {
+                    log.info("Reservation for orderId {} is already COMMITTED, duplicate no-op", orderId);
                     return;
                 }
-            }
 
-            Reservation reservation = resOpt.get();
-            if (reservation.getStatus() == ReservationStatus.COMMITTED) {
-                log.info("Reservation for orderId {} is already COMMITTED, duplicate no-op", orderId);
-                return;
-            }
+                try {
+                    reservationService.commit(orderId, correlationId);
+                } catch (ConflictException ex) {
+                    log.warn("Commit conflict on orderId {}: {}", orderId, ex.getMessage());
+                }
+            });
 
-            try {
-                reservationService.commit(orderId, correlationId);
-            } catch (ConflictException ex) {
-                log.warn("Commit conflict on orderId {}: {}", orderId, ex.getMessage());
+            if (ack != null) {
+                ack.acknowledge();
             }
-        });
-
-        if (ack != null) {
-            ack.acknowledge();
+        } finally {
+            MDC.remove(SecurityConstants.MDC_CORRELATION_ID);
         }
     }
 
@@ -102,6 +116,7 @@ public class PaymentEventConsumer {
     public void consumePaymentFailed(ConsumerRecord<String, String> record, Acknowledgment ack) {
         PaymentFailedEvent event;
         try {
+            validateRawEnvelope(record.value(), "payment.failed");
             event = objectMapper.readValue(record.value(), PaymentFailedEvent.class);
             validatePaymentFailedEvent(event);
         } catch (Exception e) {
@@ -114,12 +129,19 @@ public class PaymentEventConsumer {
         String eventId = event.getEventId().toString();
         String correlationId = event.getCorrelationId();
 
-        idempotentConsumerHelper.processIdempotent(eventId, consumerGroup, event, evt -> {
-            reservationService.releaseForEvent(evt.getOrderId(), evt.getFailureReason(), correlationId);
-        });
+        try {
+            if (correlationId != null) {
+                MDC.put(SecurityConstants.MDC_CORRELATION_ID, correlationId);
+            }
+            idempotentConsumerHelper.processIdempotent(eventId, consumerGroup, event, evt -> {
+                reservationService.releaseForEvent(evt.getOrderId(), evt.getFailureReason(), correlationId);
+            });
 
-        if (ack != null) {
-            ack.acknowledge();
+            if (ack != null) {
+                ack.acknowledge();
+            }
+        } finally {
+            MDC.remove(SecurityConstants.MDC_CORRELATION_ID);
         }
     }
 
@@ -127,8 +149,11 @@ public class PaymentEventConsumer {
         if (event == null) {
             throw new IllegalArgumentException("Payload cannot be null");
         }
-        if (event.getEventType() != null && !"payment.succeeded".equals(event.getEventType())) {
+        if (event.getEventType() == null || !"payment.succeeded".equals(event.getEventType())) {
             throw new IllegalArgumentException("Invalid eventType: " + event.getEventType());
+        }
+        if (event.getEventVersion() != 1) {
+            throw new IllegalArgumentException("Unsupported eventVersion: " + event.getEventVersion());
         }
         if (event.getOrderId() == null) {
             throw new IllegalArgumentException("orderId is required");
@@ -141,12 +166,25 @@ public class PaymentEventConsumer {
         }
     }
 
+    private void validateRawEnvelope(String payload, String expectedType) throws Exception {
+        var root = objectMapper.readTree(payload);
+        if (root == null || !root.isObject()
+                || !root.path("eventId").isTextual() || root.path("eventId").asText().isBlank()
+                || !expectedType.equals(root.path("eventType").asText())
+                || !root.path("eventVersion").canConvertToInt() || root.path("eventVersion").asInt() != 1) {
+            throw new IllegalArgumentException("Invalid event envelope for " + expectedType);
+        }
+    }
+
     private void validatePaymentFailedEvent(PaymentFailedEvent event) {
         if (event == null) {
             throw new IllegalArgumentException("Payload cannot be null");
         }
-        if (event.getEventType() != null && !"payment.failed".equals(event.getEventType())) {
+        if (event.getEventType() == null || !"payment.failed".equals(event.getEventType())) {
             throw new IllegalArgumentException("Invalid eventType: " + event.getEventType());
+        }
+        if (event.getEventVersion() != 1) {
+            throw new IllegalArgumentException("Unsupported eventVersion: " + event.getEventVersion());
         }
         if (event.getOrderId() == null) {
             throw new IllegalArgumentException("orderId is required");
