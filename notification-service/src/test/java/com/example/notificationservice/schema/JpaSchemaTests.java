@@ -8,8 +8,6 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 
-import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.UUID;
@@ -18,33 +16,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
-@org.junit.jupiter.api.condition.EnabledIf("isPostgresAvailable")
 @TestPropertySource(properties = {
         "eureka.client.enabled=false",
-        "spring.flyway.enabled=true",
-        "spring.flyway.locations=classpath:db/migration",
-        "spring.jpa.hibernate.ddl-auto=none",
-        "spring.datasource.url=${NOTIFICATION_TEST_DB_URL:jdbc:postgresql://localhost:5432/notification_db}",
-        "spring.datasource.username=postgres",
-        "spring.datasource.password=postgres",
-        "spring.datasource.driver-class-name=org.postgresql.Driver"
+        "spring.jpa.hibernate.ddl-auto=create-drop",
+        "security.internal-service-keys.order-service=order-service-secret-key-32chars"
 })
-class FlywaySchemaTests {
-
-    static boolean isPostgresAvailable() {
-        try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(System.getenv().getOrDefault("NOTIFICATION_TEST_DB_HOST", "localhost"), 5432), 1000);
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
-    }
+class JpaSchemaTests {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @Test
-    @DisplayName("Positive: Flyway migrations execute successfully and create outbox_events along with core tables")
+    @DisplayName("Positive: JPA ddl-auto generates outbox_events along with core tables and seeds templates")
     void testTablesExist() {
         Integer templatesCount = jdbcTemplate.queryForObject("SELECT count(*) FROM notification_templates", Integer.class);
         assertThat(templatesCount).isNotNull().isGreaterThanOrEqualTo(1);

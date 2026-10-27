@@ -94,7 +94,8 @@ class SecurityLayerTests {
     @Test
     @DisplayName("MyUserDetailsService: should load user details by email")
     void testMyUserDetailsService() {
-        Role role = roleRepository.save(Role.builder().roleName(RoleName.ROLE_ADMINISTRATOR).description("Admin").build());
+        Role role = roleRepository.findByRoleName(RoleName.ROLE_ADMINISTRATOR)
+                .orElseGet(() -> roleRepository.save(Role.builder().roleName(RoleName.ROLE_ADMINISTRATOR).description("Admin").build()));
         User user = userRepository.save(User.builder()
                 .email("details@example.com")
                 .passwordHash("$2a$12$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy")

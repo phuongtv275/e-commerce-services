@@ -34,9 +34,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 @org.junit.jupiter.api.condition.EnabledIf("isPostgresAvailable")
 @TestPropertySource(properties = {
         "eureka.client.enabled=false",
-        "spring.flyway.enabled=true",
-        "spring.flyway.locations=classpath:db/migration",
-        "spring.jpa.hibernate.ddl-auto=none",
+        "spring.jpa.hibernate.ddl-auto=update",
+        "spring.jpa.database-platform=org.hibernate.dialect.PostgreSQLDialect",
         "spring.datasource.url=jdbc:postgresql://localhost:5432/inventory_db",
         "spring.datasource.username=postgres",
         "spring.datasource.password=postgres",
@@ -71,7 +70,13 @@ class MultiInstanceExpiryClaimIntegrationTests {
     @Test
     @DisplayName("Positive: Multi-instance concurrent expiry claims do not process duplicate reservations using SKIP LOCKED")
     void testConcurrentExpiryClaims_NoDuplicateOrConflict() throws Exception {
-        Warehouse warehouse = warehouseRepository.findFirstByIsDefaultTrueAndStatus(WarehouseStatus.ACTIVE).orElseThrow();
+        Warehouse warehouse = warehouseRepository.findFirstByIsDefaultTrueAndStatus(WarehouseStatus.ACTIVE)
+                .orElseGet(() -> warehouseRepository.save(Warehouse.builder()
+                        .name("Default Warehouse")
+                        .code("WH_DEFAULT")
+                        .isDefault(true)
+                        .status(WarehouseStatus.ACTIVE)
+                        .build()));
         UUID skuId = UUID.randomUUID();
         stockService.adjust(new StockAdjustmentCommand(skuId, warehouse.getId(), 50, "ref-sched-" + UUID.randomUUID(), "Init"), "admin", "c1");
 
