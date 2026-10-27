@@ -1,6 +1,7 @@
 package com.example.identityservice.models.services.impl;
 
 import com.ecommerce.common.exception.ResourceNotFoundException;
+import com.ecommerce.common.exception.ValidationException;
 import com.example.identityservice.models.dto.req.AddressReq;
 import com.example.identityservice.models.dto.res.AddressRes;
 import com.example.identityservice.models.dto.res.InternalAddressRes;
@@ -129,8 +130,26 @@ public class AddressServiceImpl implements AddressService {
             address = addressRepository.findByIdAndUserIdAndDeletedAtIsNull(addressId, userId)
                     .orElseThrow(() -> new ResourceNotFoundException("Address not found with id: " + addressId));
             address.setDefault(true);
-        } else if (req.isDefault() != null) {
-            address.setDefault(req.isDefault());
+        } else if (Boolean.FALSE.equals(req.isDefault())) {
+            if (address.isDefault()) {
+                long activeCount = addressRepository.countByUserIdAndDeletedAtIsNull(userId);
+                if (activeCount <= 1) {
+                    throw new ValidationException("Không thể bỏ trạng thái mặc định của địa chỉ duy nhất");
+                }
+                Address nextDefault = addressRepository
+                        .findFirstByUserIdAndIdNotAndDeletedAtIsNullOrderByUpdatedAtDesc(userId, addressId)
+                        .orElse(null);
+
+                address.setDefault(false);
+                addressRepository.saveAndFlush(address);
+
+                if (nextDefault != null) {
+                    nextDefault.setDefault(true);
+                    addressRepository.save(nextDefault);
+                }
+            } else {
+                address.setDefault(false);
+            }
         }
 
         if (req.recipientName() != null && !req.recipientName().isBlank()) {
@@ -177,10 +196,22 @@ public class AddressServiceImpl implements AddressService {
         Address address = addressRepository.findByIdAndUserIdAndDeletedAtIsNull(addressId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Address not found with id: " + addressId));
 
+        boolean wasDefault = address.isDefault();
         String userEmail = (address.getUser() != null) ? address.getUser().getEmail() : null;
 
         address.setDeletedAt(Instant.now());
-        addressRepository.save(address);
+        address.setDefault(false);
+        addressRepository.saveAndFlush(address);
+
+        if (wasDefault) {
+            Address nextDefault = addressRepository
+                    .findFirstByUserIdAndDeletedAtIsNullOrderByUpdatedAtDesc(userId)
+                    .orElse(null);
+            if (nextDefault != null) {
+                nextDefault.setDefault(true);
+                addressRepository.save(nextDefault);
+            }
+        }
 
         auditLogService.logAction(
                 userId,

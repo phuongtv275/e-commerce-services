@@ -7,6 +7,8 @@ import com.example.identityservice.models.entities.User;
 import com.example.identityservice.models.repositories.UserRepository;
 import com.example.identityservice.models.services.AuditLogService;
 import com.example.identityservice.models.services.UserService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
@@ -14,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
@@ -23,6 +26,7 @@ public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
     private final AuditLogService auditLogService;
+    private final ObjectMapper objectMapper;
 
     @Override
     @Transactional(readOnly = true)
@@ -61,13 +65,21 @@ public class UserServiceImpl implements UserService {
 
         User saved = userRepository.save(user);
 
+        String delta;
+        try {
+            delta = objectMapper.writeValueAsString(Map.of("fullName", saved.getFullName() != null ? saved.getFullName() : ""));
+        } catch (JsonProcessingException e) {
+            log.warn("Failed to serialize audit log delta for user {}: {}", userId, e.getMessage());
+            delta = "{}";
+        }
+
         auditLogService.logAction(
                 userId,
                 saved.getEmail(),
                 "UPDATE_PROFILE",
                 "USER",
                 userId.toString(),
-                "{\"fullName\":\"" + saved.getFullName() + "\"}",
+                delta,
                 null,
                 MDC.get("correlationId")
         );
