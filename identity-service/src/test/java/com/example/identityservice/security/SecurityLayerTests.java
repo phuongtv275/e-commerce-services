@@ -4,6 +4,7 @@ import com.example.identityservice.models.constants.RoleName;
 import com.example.identityservice.models.constants.UserStatus;
 import com.example.identityservice.models.entities.Role;
 import com.example.identityservice.models.entities.User;
+import com.example.identityservice.models.services.RedisBlacklistService;
 import com.example.identityservice.security.jwt.JwtUtils;
 import io.jsonwebtoken.Claims;
 import org.junit.jupiter.api.DisplayName;
@@ -13,6 +14,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
@@ -42,6 +44,9 @@ class SecurityLayerTests {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @MockitoBean
+    private RedisBlacklistService redisBlacklistService;
 
     @Test
     @DisplayName("PasswordEncoder: should encode and verify password using BCrypt")
@@ -127,5 +132,56 @@ class SecurityLayerTests {
     void testAdminEndpointUnauthenticated() throws Exception {
         mockMvc.perform(get("/api/v1/admin/users"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("Positive: Local JWT filter authenticates valid Bearer token without X-Gateway-Assertion")
+    void testLocalJwtAuthenticationFallback_Positive() throws Exception {
+        Role adminRole = roleRepository.findByRoleName(RoleName.ROLE_ADMINISTRATOR)
+                .orElseGet(() -> roleRepository.save(Role.builder().roleName(RoleName.ROLE_ADMINISTRATOR).description("Admin").build()));
+        User adminUser = userRepository.save(User.builder()
+                .email("admin_local@example.com")
+                .passwordHash("$2a$12$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy")
+                .fullName("Admin Local")
+                .status(UserStatus.ACTIVE)
+                .emailVerified(true)
+                .roles(Set.of(adminRole))
+                .build());
+
+        String token = jwtUtils.generateAccessToken(adminUser);
+
+        // Request has Bearer token and NO X-Gateway-Assertion header
+        mockMvc.perform(get("/api/v1/admin/users")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("Negative: Local JWT filter rejects request with invalid Bearer token")
+    void testLocalJwtAuthenticationFallback_Negative_InvalidToken() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/users")
+                        .header("Authorization", "Bearer invalid-jwt-token-string"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("Negative: Local JWT filter authenticates customer but access to admin endpoint returns 403")
+    void testLocalJwtAuthenticationFallback_Negative_ForbiddenRole() throws Exception {
+        Role customerRole = roleRepository.findByRoleName(RoleName.ROLE_CUSTOMER)
+                .orElseGet(() -> roleRepository.save(Role.builder().roleName(RoleName.ROLE_CUSTOMER).description("Customer").build()));
+        User customerUser = userRepository.save(User.builder()
+                .email("customer_local@example.com")
+                .passwordHash("$2a$12$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy")
+                .fullName("Customer Local")
+                .status(UserStatus.ACTIVE)
+                .emailVerified(true)
+                .roles(Set.of(customerRole))
+                .build());
+
+        String token = jwtUtils.generateAccessToken(customerUser);
+
+        mockMvc.perform(get("/api/v1/admin/users")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden());
     }
 }

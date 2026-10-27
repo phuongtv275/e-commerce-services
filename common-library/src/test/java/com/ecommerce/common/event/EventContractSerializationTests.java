@@ -149,4 +149,43 @@ class EventContractSerializationTests {
         String invalidJson = "{ \"skuId\": \"not-a-uuid\", \"version\": \"not-a-number\" }";
         assertThrows(Exception.class, () -> objectMapper.readValue(invalidJson, InventoryStockChangedEvent.class));
     }
+
+    @Test
+    @DisplayName("Positive: Serialize & Deserialize UserPasswordResetRequestedEvent")
+    void testUserPasswordResetRequestedEventSerialization_Positive() throws Exception {
+        UUID eventId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UserPasswordResetRequestedEvent event = UserPasswordResetRequestedEvent.builder()
+                .eventId(eventId)
+                .eventType("user.password-reset-requested")
+                .eventVersion(1)
+                .occurredAt(Instant.now())
+                .correlationId("test-corr-reset-1")
+                .producer("identity-service")
+                .userId(userId)
+                .email("user@example.com")
+                .fullName("Test User")
+                .resetToken("reset-token-123456")
+                .build();
+
+        String json = objectMapper.writeValueAsString(event);
+        assertNotNull(json);
+
+        UserPasswordResetRequestedEvent deserialized = objectMapper.readValue(json, UserPasswordResetRequestedEvent.class);
+        assertEquals(eventId, deserialized.eventId());
+        assertEquals("user.password-reset-requested", deserialized.eventType());
+        assertEquals(1, deserialized.eventVersion());
+        assertEquals(userId, deserialized.userId());
+        assertEquals("user@example.com", deserialized.email());
+        assertEquals("Test User", deserialized.fullName());
+        assertEquals("reset-token-123456", deserialized.resetToken());
+        assertEquals("identity-service", deserialized.producer());
+    }
+
+    @Test
+    @DisplayName("Negative: UserPasswordResetRequestedEvent deserialization with invalid UUID should fail")
+    void testUserPasswordResetRequestedEventSerialization_Negative_InvalidUuid() {
+        String invalidJson = "{ \"eventId\": \"invalid-uuid\", \"userId\": \"not-a-uuid\" }";
+        assertThrows(Exception.class, () -> objectMapper.readValue(invalidJson, UserPasswordResetRequestedEvent.class));
+    }
 }

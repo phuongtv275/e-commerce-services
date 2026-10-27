@@ -2,6 +2,7 @@ package com.example.identityservice.models.services.impl;
 
 import com.ecommerce.common.constant.ErrorCode;
 import com.ecommerce.common.constant.SecurityConstants;
+import com.ecommerce.common.event.UserPasswordResetRequestedEvent;
 import com.ecommerce.common.event.UserRegisteredEvent;
 import com.ecommerce.common.exception.BusinessException;
 import com.ecommerce.common.exception.ConflictException;
@@ -115,33 +116,45 @@ public class AuthServiceImpl implements AuthService {
         }
     }
 
-    private void saveOutboxEvent(String eventType, User user, String token) {
+    private void saveUserPasswordResetRequestedOutboxEvent(User user, String rawResetToken) {
+        UUID eventId = UUID.randomUUID();
+        String correlationId = MDC.get(SecurityConstants.MDC_CORRELATION_ID);
+        if (correlationId == null) {
+            correlationId = MDC.get("correlationId");
+        }
+
+        UserPasswordResetRequestedEvent resetEvent = UserPasswordResetRequestedEvent.builder()
+                .eventId(eventId)
+                .eventType("user.password-reset-requested")
+                .eventVersion(1)
+                .occurredAt(Instant.now())
+                .correlationId(correlationId)
+                .producer("identity-service")
+                .userId(user.getId())
+                .email(user.getEmail())
+                .fullName(user.getFullName())
+                .resetToken(rawResetToken)
+                .build();
+
         try {
-            Map<String, Object> payloadMap = new HashMap<>();
-            payloadMap.put("userId", user.getId().toString());
-            payloadMap.put("email", user.getEmail());
-            payloadMap.put("fullName", user.getFullName());
-            if (token != null) {
-                payloadMap.put("token", token);
-            }
-            String payload = objectMapper.writeValueAsString(payloadMap);
+            String payload = objectMapper.writeValueAsString(resetEvent);
 
             OutboxEvent event = OutboxEvent.builder()
-                    .id(UUID.randomUUID())
+                    .id(eventId)
                     .aggregateType("USER")
                     .aggregateId(user.getId().toString())
-                    .eventType(eventType)
+                    .eventType("user.password-reset-requested")
                     .eventVersion(1)
                     .payload(payload)
                     .status(OutboxStatus.PENDING)
                     .retryCount(0)
                     .createdAt(Instant.now())
-                    .correlationId(MDC.get("correlationId"))
+                    .correlationId(correlationId)
                     .build();
             outboxEventRepository.save(event);
-            log.info("Saved outbox event [{}] for user: {}", eventType, user.getEmail());
+            log.info("Saved outbox event [user.password-reset-requested] eventId={}", eventId);
         } catch (Exception e) {
-            log.error("Failed to serialize outbox event payload: {}", e.getMessage(), e);
+            log.error("Failed to serialize user.password-reset-requested outbox event: {}", e.getMessage(), e);
             throw new RuntimeException("Could not record outbox event", e);
         }
     }
@@ -372,7 +385,7 @@ public class AuthServiceImpl implements AuthService {
                         .build();
                 passwordResetRepository.save(reset);
 
-                saveOutboxEvent("PasswordResetRequestedEvent", user, rawResetToken);
+                saveUserPasswordResetRequestedOutboxEvent(user, rawResetToken);
 
                 auditLogService.logAction(
                         user.getId(),
