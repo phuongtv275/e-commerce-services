@@ -38,7 +38,7 @@ spring:
       ack-mode: MANUAL_IMMEDIATE
 
   mail:
-    host: ${MAIL_HOST:${SPRING_MAIL_HOST:localhost}}
+    host: ${MAIL_HOST:${SPRING_MAIL_HOST:smtp.gmail.com}}
     port: ${MAIL_PORT:${SPRING_MAIL_PORT:587}}
     username: ${MAIL_USERNAME:${SPRING_MAIL_USERNAME:}}
     password: ${MAIL_PASSWORD:${SPRING_MAIL_PASSWORD:}}
@@ -46,12 +46,13 @@ spring:
     properties:
       mail:
         smtp:
-          auth: ${MAIL_SMTP_AUTH:false}
+          auth: ${MAIL_SMTP_AUTH:true}
           starttls:
-            enable: ${MAIL_SMTP_STARTTLS_ENABLE:false}
-          connectiontimeout: ${MAIL_SMTP_CONNECTION_TIMEOUT_MS:5000}
-          timeout: ${MAIL_SMTP_READ_TIMEOUT_MS:5000}
-          writetimeout: ${MAIL_SMTP_WRITE_TIMEOUT_MS:5000}
+            enable: ${MAIL_SMTP_STARTTLS_ENABLE:true}
+            required: true
+          connectiontimeout: ${MAIL_SMTP_CONNECTION_TIMEOUT_MS:10000}
+          timeout: ${MAIL_SMTP_READ_TIMEOUT_MS:10000}
+          writetimeout: ${MAIL_SMTP_WRITE_TIMEOUT_MS:10000}
 
 eureka:
   client:

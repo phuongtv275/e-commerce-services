@@ -181,6 +181,10 @@ public class CommonLibraryAutoConfiguration {
             String cleanKey = keyStr
                     .replace("-----BEGIN PUBLIC KEY-----", "")
                     .replace("-----END PUBLIC KEY-----", "")
+                    .replace("-----BEGIN RSA PUBLIC KEY-----", "")
+                    .replace("-----END RSA PUBLIC KEY-----", "")
+                    .replace("\\n", "")
+                    .replace("\\r", "")
                     .replaceAll("\\s+", "");
             byte[] keyBytes = Base64.getDecoder().decode(cleanKey);
             X509EncodedKeySpec spec = new X509EncodedKeySpec(keyBytes);

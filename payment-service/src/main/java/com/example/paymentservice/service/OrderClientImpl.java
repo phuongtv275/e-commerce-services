@@ -28,7 +28,8 @@ public class OrderClientImpl implements OrderClient {
 
     @Override
     public OrderInternalResponse getOrder(UUID orderId) {
-        String url = orderServiceProperties.getBaseUrl() + "/internal/orders/" + orderId;
+        String baseUrl = normalizeBaseUrl(orderServiceProperties.getBaseUrl());
+        String url = baseUrl + "/internal/orders/" + orderId;
         log.info("Fetching order {} from {}", orderId, url);
 
         try {
@@ -67,5 +68,16 @@ public class OrderClientImpl implements OrderClient {
             log.error("Failed to call internal order-service for order {}: {}", orderId, e.getMessage(), e);
             throw new BusinessException(ErrorCode.UPSTREAM_UNAVAILABLE, "Unable to fetch order information: " + e.getMessage());
         }
+    }
+
+    private static String normalizeBaseUrl(String url) {
+        if (url == null || url.isBlank()) {
+            return "http://localhost:8084";
+        }
+        String trimmed = url.trim();
+        if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+            return "http://" + trimmed;
+        }
+        return trimmed;
     }
 }

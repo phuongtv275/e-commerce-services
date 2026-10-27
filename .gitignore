@@ -23,6 +23,7 @@ out/
 
 # Environment and logs
 .env
+local.env
 *.log
 
 # Coding agents configuration files (per AGENTS.md rule)

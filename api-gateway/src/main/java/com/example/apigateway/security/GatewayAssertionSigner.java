@@ -2,7 +2,9 @@ package com.example.apigateway.security;
 
 import io.jsonwebtoken.Jwts;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 import java.security.KeyFactory;
@@ -32,10 +34,10 @@ public class GatewayAssertionSigner {
             "45213b0adae47a0087ac71bd47eaab95a3195eda0afa592f73a7a78c2eabbae6"
     );
 
-    @org.springframework.beans.factory.annotation.Autowired
+    @Autowired
     public GatewayAssertionSigner(
             @Value("${gateway.assertion.private-key:}") String privateKeyPem,
-            @org.springframework.beans.factory.annotation.Autowired(required = false) org.springframework.core.env.Environment environment) {
+            @Autowired(required = false) Environment environment) {
         this.privateKey = parsePrivateKey(privateKeyPem);
         if (this.privateKey == null) {
             throw new IllegalStateException("GATEWAY_ASSERTION_PRIVATE_KEY is missing or invalid. Gateway requires a valid RSA-2048 private key to sign identity assertions.");

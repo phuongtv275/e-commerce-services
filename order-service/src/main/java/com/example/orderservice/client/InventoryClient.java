@@ -40,9 +40,20 @@ public class InventoryClient {
         requestFactory.setReadTimeout(Duration.ofMillis(readTimeoutMs));
 
         this.restClient = RestClient.builder()
-                .baseUrl(baseUrl)
+                .baseUrl(normalizeBaseUrl(baseUrl))
                 .requestFactory(requestFactory)
                 .build();
+    }
+
+    private static String normalizeBaseUrl(String url) {
+        if (url == null || url.isBlank()) {
+            return "http://localhost:8083";
+        }
+        String trimmed = url.trim();
+        if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+            return "http://" + trimmed;
+        }
+        return trimmed;
     }
 
     public InventoryStockBatchResponse getBatchStocks(List<UUID> skuIds) {

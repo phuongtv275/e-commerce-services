@@ -241,7 +241,7 @@ Kiến trúc sử dụng **Choreography-based Saga** (phi tập trung), không s
 
 ## 6. QUẢN LÝ CẤU HÌNH & BIẾN MÔI TRƯỜNG (12-FACTOR APP)
 
-Toàn bộ thông số nhạy cảm được cấu hình thông qua file `.env` mẫu (`.env.example`):
+Toàn bộ thông số nhạy cảm được cấu hình thông qua file `../local.env` mẫu (`.env.example`):
 * `CONFIG_SERVER_URL=http://config-server:8888`
 * `GATEWAY_ASSERTION_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQD...==\n-----END PRIVATE KEY-----"`
 * `GATEWAY_ASSERTION_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...==\n-----END PUBLIC KEY-----"`
