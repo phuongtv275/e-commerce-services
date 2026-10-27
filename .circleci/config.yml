@@ -136,7 +136,23 @@ jobs:
   notification-tests:
     docker:
       - image: cimg/openjdk:21.0
+        environment:
+          NOTIFICATION_TEST_DB_URL: jdbc:postgresql://postgres:5432/notification_db
+          NOTIFICATION_TEST_DB_HOST: postgres
+      - image: postgres:16-alpine
+        environment:
+          POSTGRES_DB: notification_db
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
     steps:
+      - run:
+          name: Wait for PostgreSQL
+          command: |
+            for attempt in $(seq 1 60); do
+              (echo > /dev/tcp/postgres/5432) >/dev/null 2>&1 && exit 0
+              sleep 1
+            done
+            exit 1
       - run-module-test:
           module: notification-service
 

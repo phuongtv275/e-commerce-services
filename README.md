@@ -19,7 +19,7 @@ Backend Microservices platform for multi-channel e-commerce system built with Sp
 | **inventory-service** | Internal (`8083`) | v0.1.2: Stock ledger, reservations, expiry, oversell-safe stock updates, Batch Stock Availability (`POST /internal/inventory/stocks/batch`) | Spring Boot WebMVC, PostgreSQL (`inventory_db`), Kafka |
 | **order-service** | Internal (`8084`) | v0.1.1: Cart, Orders, Checkout, Outbox, Idempotency, Order Lifecycle State Machine (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`order_db`), Kafka |
 | **payment-service** | Internal (`8085`) | Payment Transactions, Refunds (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`payment_db`) |
-| **notification-service** | Internal (`8086`) | v0.1.1: Durable Kafka event ingestion, Vietnamese HTML email rendering, bounded JavaMailSender SMTP delivery, retry/DLQ auto-redrive, PII retention purge, Admin DLQ APIs (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`notification_db`), Spring Kafka, JavaMailSender, Flyway |
+| **notification-service** | Internal (`8086`) | v0.1.2: Durable Kafka event ingestion, Vietnamese HTML email rendering, bounded JavaMailSender SMTP delivery, retry/DLQ auto-redrive, PII retention purge, Admin DLQ APIs (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`notification_db`), Spring Kafka, JavaMailSender, Flyway |
 | **eureka-server** | `8761` | Service Registry & Discovery | Spring Cloud Netflix Eureka Server |
 | **config-server** | `8888` | Centralized Configuration Management | Spring Cloud Config Server (`native` profile) |
 | **PostgreSQL** | `5432` | Multi-Tenant Database | PostgreSQL 16 Alpine (6 independent databases) |
@@ -171,12 +171,12 @@ Order Service owns customer shopping carts, idempotent order checkout, order lif
 
 ---
 
-## 9. Notification Service Architecture (`notification-service` v0.1.1)
+## 9. Notification Service Architecture (`notification-service` v0.1.2)
 
 Notification Service manages durable transactional email notifications, template rendering, bounded SMTP delivery, automatic DLQ redrive, and PII retention lifecycle.
 
 ### Key Architectural Invariants
-- **Database & Persistence:** Dedicated PostgreSQL database (`notification_db`) with Flyway migrations (`V1__init_notification_schema.sql`, `V2__seed_notification_templates.sql`) managing `notification_templates`, `notification_logs`, and `processed_events`.
+- **Database & Persistence:** Dedicated PostgreSQL database (`notification_db`) with Flyway migrations (`V1__init_notification_schema.sql`, `V2__seed_notification_templates.sql`, `V3__add_outbox_events_schema.sql`) managing `notification_templates`, `notification_logs`, `processed_events`, and `outbox_events`.
 - **Durable Kafka Ingestion & Deduplication:** Subscribes to 5 approved domain topics (`user.registered`, `order.status-changed`, `order.cancelled`, `payment.succeeded`, `payment.refund-completed`). Filters `order.status-changed` for `CONFIRMED` orders only. In a single local database transaction, saves `NotificationLog` in `QUEUED` state and records `processed_events` for consumer group `notification-service-group` before acknowledging offsets. Duplicates are safely acknowledged as no-ops.
 - **Zero-Trust Inter-Service Snapshots:** Calls `GET /internal/orders/{orderId}/notification-snapshot` (`ROLE_SERVICE_NOTIFICATION`) for order snapshot and item rows, and `GET /internal/users/{userId}` for recipient email/name. Secrets are configured externally via `${INTERNAL_SERVICE_KEYS_NOTIFICATION_SERVICE}` without hardcoded fallbacks.
 - **Template Rendering & Bounded SMTP Worker:** Vietnamese HTML templates render with escaped values and safe item rows. A bounded worker atomically claims `QUEUED`/`FAILED` jobs with a 10-minute lease and delivers through `JavaMailSender` outside database transactions, applying exponential backoff and transitioning to `DEAD_LETTER` after 3 attempts.
