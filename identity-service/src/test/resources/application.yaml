@@ -1,0 +1,38 @@
+spring:
+  application:
+    name: identity-service
+  cloud:
+    config:
+      enabled: false
+  datasource:
+    url: jdbc:h2:mem:identity_db;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+  flyway:
+    enabled: false
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+eureka:
+  client:
+    enabled: false
+
+app:
+  jwt:
+    secret: "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970"
+    access-token-expiration: 900000
+    refresh-token-expiration: 604800000
+
+security:
+  gateway-assertion:
+    public-key: "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1rYaNGEBN4TFHrxLtu91\natHxmWjLaEduLAEZsrGEMj1czx1iKP4DZjCIicBq/CAnrKx/hjum2yTgfV8HcaBR\nY1dcQ5Mzix4nRCx3EjWyUEdFkGr9Li9PORUU4O+NMpg0BfUhBeclkx78oz4rq3wd\nBWXBHBmPPPLbKACHQnUCwynUmFm7u/2VUbF8ynuOBJFETtk1xO5krePJpp8yKlc5\ngddhRDhl9GS7+n/em/HVBkZx4NLJUJS9Y4M12euiHsZrZLJUVDL2hGbjPWWB+JPb\niqYNaD+QGVr9+go5NKHUCwXot/D7UIjI14d0xQYiVKZqqDzwgJyoGHTQxyH8EkxK\nnwIDAQAB\n-----END PUBLIC KEY-----"
+  internal-service-keys:
+    order-service: "e0de2d8d12cf23ec3ba59b392e0b52ee776e02cb8bc8dcdf30832fe86524c6e0"
+    notification-service: "9872c97a97c4a59def15e508794d867b8c7a24bbc170588ec154c65c878953ff"

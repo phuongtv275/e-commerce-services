@@ -9,21 +9,19 @@ services:
     restart: always
     ports:
       - "8080:8080"
+    env_file:
+      - .env
     environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
+      REDIS_HOST: redis-cache
       IDENTITY_SERVICE_URL: identity-service:8081
       CATALOG_SERVICE_URL: catalog-service:8082
       INVENTORY_SERVICE_URL: inventory-service:8083
       ORDER_SERVICE_URL: order-service:8084
       PAYMENT_SERVICE_URL: payment-service:8085
       NOTIFICATION_SERVICE_URL: notification-service:8086
-      REDIS_HOST: redis-cache
-      REDIS_PORT: 6379
-      REDIS_PASSWORD: rikkeiacademy
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
-      GATEWAY_ASSERTION_PRIVATE_KEY: ${GATEWAY_ASSERTION_PRIVATE_KEY}
     depends_on:
       config-server:
         condition: service_healthy
@@ -40,18 +38,14 @@ services:
       dockerfile: identity-service/Dockerfile
     container_name: ecom-identity-service
     restart: always
+    env_file:
+      - .env
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/identity_db
+      POSTGRES_HOST: postgres
       REDIS_HOST: redis-cache
-      REDIS_PORT: 6379
-      REDIS_PASSWORD: rikkeiacademy
-      JWT_SECRET: ${JWT_SECRET}
-      GATEWAY_ASSERTION_PUBLIC_KEY: ${GATEWAY_ASSERTION_PUBLIC_KEY}
-      INTERNAL_KEY_ORDER: ${INTERNAL_KEY_ORDER}
-      INTERNAL_KEY_NOTIFICATION: ${INTERNAL_KEY_NOTIFICATION}
     depends_on:
       config-server:
         condition: service_healthy
@@ -71,14 +65,15 @@ services:
       dockerfile: catalog-service/Dockerfile
     container_name: ecom-catalog-service
     restart: always
+    env_file:
+      - .env
     environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/catalog_db
-      ELASTICSEARCH_URIS: http://elasticsearch:9200
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      GATEWAY_ASSERTION_PUBLIC_KEY: ${GATEWAY_ASSERTION_PUBLIC_KEY}
-      INTERNAL_KEY_ORDER: ${INTERNAL_KEY_ORDER}
+      POSTGRES_HOST: postgres
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      ELASTICSEARCH_HOST: elasticsearch
     depends_on:
       config-server:
         condition: service_healthy
@@ -100,14 +95,14 @@ services:
       dockerfile: inventory-service/Dockerfile
     container_name: ecom-inventory-service
     restart: always
+    env_file:
+      - .env
     environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/inventory_db
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      GATEWAY_ASSERTION_PUBLIC_KEY: ${GATEWAY_ASSERTION_PUBLIC_KEY}
-      INTERNAL_KEY_ORDER: ${INTERNAL_KEY_ORDER}
-      INTERNAL_KEY_PAYMENT: ${INTERNAL_KEY_PAYMENT}
+      POSTGRES_HOST: postgres
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
     depends_on:
       config-server:
         condition: service_healthy
@@ -129,14 +124,17 @@ services:
       dockerfile: order-service/Dockerfile
     container_name: ecom-order-service
     restart: always
+    env_file:
+      - .env
     environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/order_db
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      GATEWAY_ASSERTION_PUBLIC_KEY: ${GATEWAY_ASSERTION_PUBLIC_KEY}
-      INTERNAL_KEY_ORDER: ${INTERNAL_KEY_ORDER}
-      INTERNAL_KEY_PAYMENT: ${INTERNAL_KEY_PAYMENT}
+      POSTGRES_HOST: postgres
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      CATALOG_SERVICE_URL: http://catalog-service:8082
+      INVENTORY_SERVICE_URL: http://inventory-service:8083
+      IDENTITY_SERVICE_URL: http://identity-service:8081
     depends_on:
       config-server:
         condition: service_healthy
@@ -156,25 +154,15 @@ services:
       dockerfile: payment-service/Dockerfile
     container_name: ecom-payment-service
     restart: always
+    env_file:
+      - .env
     environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/payment_db
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      GATEWAY_ASSERTION_PUBLIC_KEY: ${GATEWAY_ASSERTION_PUBLIC_KEY}
-      INTERNAL_KEY_PAYMENT: ${INTERNAL_KEY_PAYMENT}
+      POSTGRES_HOST: postgres
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       ORDER_SERVICE_URL: http://order-service:8084
-      VNPAY_TMN_CODE: ${VNPAY_TMN_CODE}
-      VNPAY_HASH_SECRET: ${VNPAY_HASH_SECRET}
-      VNPAY_IPN_URL: ${VNPAY_IPN_URL}
-      VNPAY_RETURN_URL: ${VNPAY_RETURN_URL}
-      VNPAY_IP_ADDRESS: ${VNPAY_IP_ADDRESS}
-      VNPAY_PAY_URL: ${VNPAY_PAY_URL:-https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
-      VNPAY_API_URL: ${VNPAY_API_URL:-https://sandbox.vnpayment.vn/merchant_webapi/api/transaction}
-      VNPAY_VERSION: ${VNPAY_VERSION:-2.1.0}
-      VNPAY_ORDER_TYPE: ${VNPAY_ORDER_TYPE:-other}
-      VNPAY_LOCALE: ${VNPAY_LOCALE:-vn}
-      VNPAY_EXPIRE_MINUTES: ${VNPAY_EXPIRE_MINUTES:-15}
     depends_on:
       config-server:
         condition: service_healthy
@@ -196,18 +184,16 @@ services:
       dockerfile: notification-service/Dockerfile
     container_name: ecom-notification-service
     restart: always
+    env_file:
+      - .env
     environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_SERVER_URL: http://eureka-server:8761/eureka/
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/notification_db
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      GATEWAY_ASSERTION_PUBLIC_KEY: ${GATEWAY_ASSERTION_PUBLIC_KEY}
-      INTERNAL_SERVICE_KEYS_NOTIFICATION_SERVICE: ${INTERNAL_SERVICE_KEYS_NOTIFICATION_SERVICE}
-      SPRING_MAIL_HOST: ${SPRING_MAIL_HOST:-}
-      SPRING_MAIL_PORT: ${SPRING_MAIL_PORT:-587}
-      SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-}
-      SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD:-}
-      MAIL_FROM: ${MAIL_FROM:-}
+      POSTGRES_HOST: postgres
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      IDENTITY_SERVICE_URL: http://identity-service:8081
+      ORDER_SERVICE_URL: http://order-service:8084
     depends_on:
       config-server:
         condition: service_healthy

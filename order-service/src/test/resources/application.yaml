@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: order-service
+  cloud:
+    config:
+      enabled: false
+  datasource:
+    url: jdbc:h2:mem:order_db;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+  flyway:
+    enabled: false
+  kafka:
+    bootstrap-servers: localhost:9092
+
+eureka:
+  client:
+    enabled: false
+
+security:
+  gateway-assertion:
+    public-key: "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1rYaNGEBN4TFHrxLtu91\natHxmWjLaEduLAEZsrGEMj1czx1iKP4DZjCIicBq/CAnrKx/hjum2yTgfV8HcaBR\nY1dcQ5Mzix4nRCx3EjWyUEdFkGr9Li9PORUU4O+NMpg0BfUhBeclkx78oz4rq3wd\nBWXBHBmPPPLbKACHQnUCwynUmFm7u/2VUbF8ynuOBJFETtk1xO5krePJpp8yKlc5\ngddhRDhl9GS7+n/em/HVBkZx4NLJUJS9Y4M12euiHsZrZLJUVDL2hGbjPWWB+JPb\niqYNaD+QGVr9+go5NKHUCwXot/D7UIjI14d0xQYiVKZqqDzwgJyoGHTQxyH8EkxK\nnwIDAQAB\n-----END PUBLIC KEY-----"
+  internal-service-keys:
+    payment-service: "a1fb2971af06749e5ef5f695720338b5611f6fa8d51bbbb476db7ab2eec22319"
+    notification-service: "9872c97a97c4a59def15e508794d867b8c7a24bbc170588ec154c65c878953ff"
