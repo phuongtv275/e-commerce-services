@@ -3,7 +3,7 @@
 Backend Microservices platform for multi-channel e-commerce system built with Spring Boot, Spring Cloud, Gradle, and Docker.
 
 - **Artifact Name:** `e-commerce-services`
-- **Version:** `0.1.15` (Semantic Versioning)
+- **Version:** `0.1.16` (Semantic Versioning)
 - **External Config Repository:** `../e-commerce-services-config`
 
 ---
@@ -210,3 +210,50 @@ Payment Service handles payment intent generation with VNPAY v2.1 redirect URLs,
   - `vnpay.locale`: `vn`
   - `vnpay.order-type`: `other`
   - `vnpay.expire-minutes`: `15` (aligned with inventory reservation TTL)
+
+---
+
+## 11. Configuration & Environment Variables Architecture (v0.1.16)
+
+To resolve configuration duplication, drift, and single-point-of-truth ambiguity across `.env`, `docker-compose`, and Spring Boot `application.yaml` files, the project implements a clean 3-tier configuration hierarchy:
+
+### Configuration Hierarchy & Roles
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              .env / local.env (Secrets & Env Overrides)         │
+│  - Single source of truth for secrets and deployment-specific   │
+│    values (passwords, JWT secrets, RSA keys, VNPAY, Mail credentials).
+└───────────────────────────────┬─────────────────────────────────┘
+                                │ Loaded via env_file / direnv / IDE
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│        Config Server & Config Repo (e-commerce-services-config)  │
+│  - Single source of truth for business and topology settings     │
+│  - application.yml: shared Kafka, Redis, Eureka, Actuator       │
+│  - <service>.yml: service-specific routes, topics, retries, etc.│
+│  - Uses standardized placeholders with fallback defaults         │
+└───────────────────────────────┬─────────────────────────────────┘
+                                │ Injected via Spring Cloud Config
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│          Microservices (src/main/resources/application.yaml)    │
+│  - Minimal bootstrap config ONLY (app name, port, configserver) │
+│  - Zero hardcoded secrets, duplicate routes, or redundant configs
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Standardized Environment Variable Names
+
+| Category | Standard Variable | Description |
+| :--- | :--- | :--- |
+| **Database** | `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | PostgreSQL connection details |
+| **Cache** | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` | Redis connection parameters |
+| **Kafka** | `KAFKA_BOOTSTRAP_SERVERS` | Kafka broker endpoints (`localhost:9092` / `kafka:29092`) |
+| **Search** | `ELASTICSEARCH_HOST`, `ELASTICSEARCH_PORT` | Elasticsearch endpoints |
+| **Mail** | `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM` | Mail sender credentials |
+| **Security** | `JWT_SECRET`, `GATEWAY_ASSERTION_PRIVATE_KEY`, `GATEWAY_ASSERTION_PUBLIC_KEY` | Zero-trust authentication keys |
+| **Service Auth** | `INTERNAL_KEY_ORDER`, `INTERNAL_KEY_NOTIFICATION`, `INTERNAL_KEY_PAYMENT` | Inter-service shared secret keys |
+| **Payment** | `VNPAY_TMN_CODE`, `VNPAY_HASH_SECRET`, `VNPAY_IPN_URL`, `VNPAY_RETURN_URL` | VNPAY integration keys |
+| **Cloud** | `CONFIG_SERVER_URL`, `EUREKA_SERVER_URL`, `SPRING_PROFILES_ACTIVE` | Spring Cloud discovery & config |
+
