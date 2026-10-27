@@ -35,6 +35,34 @@ public class AdminNotificationController {
     private final NotificationLogRepository notificationLogRepository;
     private final DlqRedriveWorker dlqRedriveWorker;
 
+    private static final String REDACTED = "[REDACTED]";
+
+    @GetMapping
+    public ResponseEntity<ApiResponse<PagedResponse<NotificationSummaryResponse>>> getHistory(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        Page<NotificationLog> logs = notificationLogRepository.findAll(
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "queuedAt"))
+        );
+
+        List<NotificationSummaryResponse> content = logs.getContent().stream()
+                .map(this::toSummaryResponse)
+                .toList();
+
+        PagedResponse<NotificationSummaryResponse> pagedResponse = PagedResponse.<NotificationSummaryResponse>builder()
+                .content(content)
+                .pageNumber(logs.getNumber())
+                .pageSize(logs.getSize())
+                .totalElements(logs.getTotalElements())
+                .totalPages(logs.getTotalPages())
+                .isFirst(logs.isFirst())
+                .isLast(logs.isLast())
+                .build();
+
+        return ResponseEntity.ok(ApiResponse.success("Get notification history successfully", pagedResponse));
+    }
+
     @GetMapping("/dlq")
     public ResponseEntity<ApiResponse<PagedResponse<NotificationSummaryResponse>>> getDlqNotifications(
             @RequestParam(defaultValue = "0") int page,
@@ -148,9 +176,9 @@ public class AdminNotificationController {
                 .channel(log.getChannel())
                 .recipient(log.getRecipient())
                 .subject(log.getSubject())
-                .renderedBody(log.getRenderedBody())
-                .bodyPreview(log.getBodyPreview())
-                .payload(log.getPayload())
+                .renderedBody(REDACTED)
+                .bodyPreview(REDACTED)
+                .payload(REDACTED)
                 .status(log.getStatus())
                 .retryCount(log.getRetryCount())
                 .errorMessage(log.getErrorMessage())

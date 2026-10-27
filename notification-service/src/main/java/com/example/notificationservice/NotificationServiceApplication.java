@@ -6,7 +6,11 @@ import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
-@EntityScan(basePackages = {"com.example.notificationservice.domain", "com.ecommerce.common.idempotency"})
+@EntityScan(basePackages = {
+        "com.example.notificationservice.domain",
+        "com.ecommerce.common.outbox",
+        "com.ecommerce.common.idempotency"
+})
 @EnableScheduling
 public class NotificationServiceApplication {
 

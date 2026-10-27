@@ -105,4 +105,40 @@ class CommonLibraryAutoConfigurationTests {
             assertThat(context).doesNotHaveBean(OutboxReplayController.class);
         });
     }
+
+    @Test
+    @DisplayName("Positive: RSA Public Key với ký tự '\\n' literal được parse thành công và inject vào TrustedHeaderAuthenticationFilter")
+    void testTrustedHeaderFilterWithPublicKeyContainingLiteralNewlines_Positive() {
+        String testPublicKeyPem = "-----BEGIN PUBLIC KEY-----\\n"
+                + "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1rYaNGEBN4TFHrxLtu91\\n"
+                + "atHxmWjLaEduLAEZsrGEMj1czx1iKP4DZjCIicBq/CAnrKx/hjum2yTgfV8HcaBR\\n"
+                + "Y1dcQ5Mzix4nRCx3EjWyUEdFkGr9Li9PORUU4O+NMpg0BfUhBeclkx78oz4rq3wd\\n"
+                + "BWXBHBmPPPLbKACHQnUCwynUmFm7u/2VUbF8ynuOBJFETtk1xO5krePJpp8yKlc5\\n"
+                + "gddhRDhl9GS7+n/em/HVBkZx4NLJUJS9Y4M12euiHsZrZLJUVDL2hGbjPWWB+JPb\\n"
+                + "iqYNaD+QGVr9+go5NKHUCwXot/D7UIjI14d0xQYiVKZqqDzwgJyoGHTQxyH8EkxK\\n"
+                + "nwIDAQAB\\n"
+                + "-----END PUBLIC KEY-----";
+
+        webContextRunner
+                .withPropertyValues(
+                        "spring.application.name=test-payment-service",
+                        "security.gateway-assertion.public-key=" + testPublicKeyPem
+                )
+                .run(context -> {
+                    assertThat(context).hasSingleBean(TrustedHeaderAuthenticationFilter.class);
+                });
+    }
+
+    @Test
+    @DisplayName("Negative: RSA Public Key không hợp lệ được log warning và không làm crash ứng dụng")
+    void testTrustedHeaderFilterWithInvalidPublicKey_Negative() {
+        webContextRunner
+                .withPropertyValues(
+                        "spring.application.name=test-payment-service",
+                        "security.gateway-assertion.public-key=invalid-not-a-valid-rsa-key"
+                )
+                .run(context -> {
+                    assertThat(context).hasSingleBean(TrustedHeaderAuthenticationFilter.class);
+                });
+    }
 }

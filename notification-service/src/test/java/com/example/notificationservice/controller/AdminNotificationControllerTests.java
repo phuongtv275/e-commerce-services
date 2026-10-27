@@ -17,6 +17,9 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -30,6 +33,7 @@ import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -56,6 +60,66 @@ class AdminNotificationControllerTests {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Test
+    @DisplayName("Positive: GET /api/v1/admin/notifications returns newest-first summaries with masked recipients")
+    @WithMockUser(authorities = {"ROLE_ADMINISTRATOR"})
+    void testGetHistory_Authorized() throws Exception {
+        NotificationLog newest = NotificationLog.builder()
+                .id(UUID.randomUUID())
+                .eventId("evt-history-new")
+                .eventType("payment.succeeded")
+                .channel(NotificationChannel.EMAIL)
+                .recipient("newest.user@example.com")
+                .subject("Newest notification")
+                .retryCount(0)
+                .status(NotificationStatus.SENT)
+                .queuedAt(Instant.parse("2026-01-02T10:00:00Z"))
+                .updatedAt(Instant.parse("2026-01-02T10:00:00Z"))
+                .build();
+        NotificationLog older = NotificationLog.builder()
+                .id(UUID.randomUUID())
+                .eventId("evt-history-old")
+                .eventType("order.cancelled")
+                .channel(NotificationChannel.EMAIL)
+                .recipient("older.user@example.com")
+                .subject("Older notification")
+                .retryCount(1)
+                .status(NotificationStatus.DEAD_LETTER)
+                .queuedAt(Instant.parse("2026-01-01T10:00:00Z"))
+                .updatedAt(Instant.parse("2026-01-01T10:00:00Z"))
+                .build();
+
+        when(notificationLogRepository.findAll(any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(newest, older)));
+
+        mockMvc.perform(get("/api/v1/admin/notifications?page=0&size=20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.content[0].eventId").value("evt-history-new"))
+                .andExpect(jsonPath("$.data.content[0].maskedRecipient").value("n***r@example.com"))
+                .andExpect(jsonPath("$.data.content[1].eventId").value("evt-history-old"))
+                .andExpect(jsonPath("$.data.content[1].maskedRecipient").value("o***r@example.com"));
+
+        verify(notificationLogRepository).findAll(
+                PageRequest.of(0, 20, Sort.by(Sort.Direction.DESC, "queuedAt"))
+        );
+    }
+
+    @Test
+    @DisplayName("Negative: GET /api/v1/admin/notifications without ROLE_ADMINISTRATOR returns 403 Forbidden")
+    @WithMockUser(authorities = {"ROLE_CUSTOMER"})
+    void testGetHistory_Forbidden() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/notifications"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("Negative: GET /api/v1/admin/notifications without authentication returns 401 Unauthorized")
+    void testGetHistory_Unauthenticated() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/notifications"))
+                .andExpect(status().isUnauthorized());
+    }
 
     @Test
     @DisplayName("Positive: GET /api/v1/admin/notifications/dlq with ROLE_ADMINISTRATOR returns masked recipient")
@@ -96,7 +160,7 @@ class AdminNotificationControllerTests {
     }
 
     @Test
-    @DisplayName("Positive: GET /api/v1/admin/notifications/{id} with ROLE_ADMINISTRATOR returns detail")
+    @DisplayName("Positive: GET /api/v1/admin/notifications/{id} redacts verification secrets while retaining detail")
     @WithMockUser(authorities = {"ROLE_ADMINISTRATOR"})
     void testGetDetail_Success() throws Exception {
         UUID id = UUID.randomUUID();
@@ -107,7 +171,9 @@ class AdminNotificationControllerTests {
                 .channel(NotificationChannel.EMAIL)
                 .recipient("admin.view@example.com")
                 .subject("Biên nhận thanh toán")
-                .renderedBody("<p>Nội dung đầy đủ</p>")
+                .renderedBody("<p>Verify at https://example.com/verify?token=secret-token-xyz</p>")
+                .bodyPreview("Verify using token secret-token-xyz")
+                .payload("{\"eventId\":\"evt-detail-1\",\"verificationToken\":\"secret-token-xyz\"}")
                 .status(NotificationStatus.SENT)
                 .queuedAt(Instant.now())
                 .updatedAt(Instant.now())
@@ -119,7 +185,10 @@ class AdminNotificationControllerTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.recipient").value("admin.view@example.com"))
-                .andExpect(jsonPath("$.data.renderedBody").value("<p>Nội dung đầy đủ</p>"));
+                .andExpect(jsonPath("$.data.subject").value("Biên nhận thanh toán"))
+                .andExpect(jsonPath("$.data.renderedBody").value("[REDACTED]"))
+                .andExpect(jsonPath("$.data.bodyPreview").value("[REDACTED]"))
+                .andExpect(jsonPath("$.data.payload").value("[REDACTED]"));
     }
 
     @Test
