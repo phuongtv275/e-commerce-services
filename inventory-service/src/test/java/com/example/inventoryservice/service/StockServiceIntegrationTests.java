@@ -38,9 +38,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @org.junit.jupiter.api.condition.EnabledIf("isPostgresAvailable")
 @TestPropertySource(properties = {
         "eureka.client.enabled=false",
-        "spring.flyway.enabled=true",
-        "spring.flyway.locations=classpath:db/migration",
-        "spring.jpa.hibernate.ddl-auto=none",
+        "spring.jpa.hibernate.ddl-auto=update",
+        "spring.jpa.database-platform=org.hibernate.dialect.PostgreSQLDialect",
         "spring.datasource.url=${INVENTORY_TEST_DB_URL:jdbc:postgresql://localhost:5432/inventory_db}",
         "spring.datasource.username=postgres",
         "spring.datasource.password=postgres",
@@ -76,7 +75,13 @@ class StockServiceIntegrationTests {
 
     @BeforeEach
     void setUp() {
-        defaultWarehouse = warehouseRepository.findFirstByIsDefaultTrueAndStatus(WarehouseStatus.ACTIVE).orElseThrow();
+        defaultWarehouse = warehouseRepository.findFirstByIsDefaultTrueAndStatus(WarehouseStatus.ACTIVE)
+                .orElseGet(() -> warehouseRepository.save(Warehouse.builder()
+                        .name("Default Warehouse")
+                        .code("WH_DEFAULT")
+                        .isDefault(true)
+                        .status(WarehouseStatus.ACTIVE)
+                        .build()));
     }
 
     @Test

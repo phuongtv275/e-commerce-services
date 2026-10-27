@@ -14,12 +14,12 @@ Backend Microservices platform for multi-channel e-commerce system built with Sp
 | :--- | :---: | :--- | :--- |
 | **common-library** | N/A | Shared Library: API Response, Global Exception, Tracing & Zero-Trust Filters, Transactional Outbox, Event Contracts, Idempotency | Plain Java Library (`java-library`), Java 21, Spring Boot BOM |
 | **api-gateway** | `8080` | Single Public Entrypoint, Centralized Routing, Header Sanitization, JWT Auth & Blacklist, RSA Assertion Signing (Audience Binding), Redis Rate Limiter, W3C CORS & Security Headers | Spring Cloud Gateway (WebFlux), Reactive Redis, Eureka Client |
-| **identity-service** | Internal (`8081`) | v0.1.15: Authentication, Authorization, Users, IAM, Audit Logs, Inter-Service Auth, Internal Address Lookup (`GET /internal/users/{userId}/addresses/{addressId}`) (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`identity_db`), Redis Blacklist, Flyway |
-| **catalog-service** | Internal (`8082`) | v0.1.1: Products, Categories, Brands, SKUs, Elasticsearch Search & Safe Reindexing (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`catalog_db`), Flyway, Elasticsearch 8.13, Spring Kafka |
-| **inventory-service** | Internal (`8083`) | v0.1.2: Stock ledger, reservations, expiry, oversell-safe stock updates, Batch Stock Availability (`POST /internal/inventory/stocks/batch`) | Spring Boot WebMVC, PostgreSQL (`inventory_db`), Kafka |
-| **order-service** | Internal (`8084`) | v0.1.1: Cart, Orders, Checkout, Outbox, Idempotency, Order Lifecycle State Machine (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`order_db`), Kafka |
-| **payment-service** | Internal (`8085`) | Payment Transactions, Refunds (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`payment_db`) |
-| **notification-service** | Internal (`8086`) | v0.1.1: Durable Kafka event ingestion, Vietnamese HTML email rendering, bounded JavaMailSender SMTP delivery, retry/DLQ auto-redrive, PII retention purge, Admin DLQ APIs (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`notification_db`), Spring Kafka, JavaMailSender, Flyway |
+| **identity-service** | Internal (`8081`) | v0.1.16: Authentication, Authorization, Users, IAM, Audit Logs, Inter-Service Auth, Internal Address Lookup (`GET /internal/users/{userId}/addresses/{addressId}`) (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`identity_db`), Redis Blacklist, Hibernate DDL Auto & IdentityDataSeeder |
+| **catalog-service** | Internal (`8082`) | v0.1.2: Products, Categories, Brands, SKUs, Elasticsearch Search & Safe Reindexing (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`catalog_db`), Hibernate DDL Auto, Elasticsearch 8.13, Spring Kafka |
+| **inventory-service** | Internal (`8083`) | v0.1.3: Stock ledger, reservations, expiry, oversell-safe stock updates, Batch Stock Availability (`POST /internal/inventory/stocks/batch`) | Spring Boot WebMVC, PostgreSQL (`inventory_db`), Hibernate DDL Auto, Kafka |
+| **order-service** | Internal (`8084`) | v0.1.2: Cart, Orders, Checkout, Outbox, Idempotency, Order Lifecycle State Machine (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`order_db`), Hibernate DDL Auto, Kafka |
+| **payment-service** | Internal (`8085`) | v0.1.2: Payment Transactions, Refunds (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`payment_db`), Hibernate DDL Auto |
+| **notification-service** | Internal (`8086`) | v0.1.3: Durable Kafka event ingestion, Vietnamese HTML email rendering, bounded JavaMailSender SMTP delivery, retry/DLQ auto-redrive, PII retention purge, Admin DLQ APIs (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`notification_db`), Spring Kafka, JavaMailSender, Hibernate DDL Auto & TemplateDataSeeder |
 | **eureka-server** | `8761` | Service Registry & Discovery | Spring Cloud Netflix Eureka Server |
 | **config-server** | `8888` | Centralized Configuration Management | Spring Cloud Config Server (`native` profile) |
 | **PostgreSQL** | `5432` | Multi-Tenant Database | PostgreSQL 16 Alpine (6 independent databases) |
@@ -102,7 +102,7 @@ Configure `SPRING_MAIL_HOST`, `SPRING_MAIL_PORT`, `SPRING_MAIL_USERNAME`, `SPRIN
 
 ---
 
-## 5. Identity Service Architecture (`identity-service` v0.1.15)
+## 5. Identity Service Architecture (`identity-service` v0.1.16)
 
 Identity Service handles authentication, authorization, user profiles, address books, and administrative IAM capabilities with zero-trust inter-service boundaries.
 
@@ -128,7 +128,7 @@ bash /home/trgphun/.gemini/antigravity-cli/brain/a807e32a-a68d-4dfe-98f4-0e82fb8
 
 ---
 
-## 7. Catalog Service Architecture (`catalog-service` v0.1.1)
+## 7. Catalog Service Architecture (`catalog-service` v0.1.2)
 
 Catalog Service manages products, hierarchical categories, brands, SKUs, and provides full-text search with asynchronous Elasticsearch indexing and zero-trust internal endpoints.
 
@@ -146,7 +146,7 @@ Catalog Service manages products, hierarchical categories, brands, SKUs, and pro
 
 ---
 
-## 7.1. Inventory Service Architecture (`inventory-service` v0.1.2)
+## 7.1. Inventory Service Architecture (`inventory-service` v0.1.3)
 
 Inventory Service manages the multi-warehouse stock ledger, stock adjustments, reservation lifecycle, and zero-trust service queries.
 
@@ -157,12 +157,12 @@ Inventory Service manages the multi-warehouse stock ledger, stock adjustments, r
 
 ---
 
-## 8. Order Service Architecture (`order-service` v0.1.1)
+## 8. Order Service Architecture (`order-service` v0.1.2)
 
 Order Service owns customer shopping carts, idempotent order checkout, order lifecycle management, transactional outbox publishing, and internal order queries.
 
 ### Key Architectural Invariants
-- **Database & Persistence:** Dedicated PostgreSQL database (`order_db`) with Flyway migrations (`V1__init_order_schema.sql`) managing `carts`, `cart_items`, `orders`, `order_items`, `order_status_history`, `idempotency_records`, `outbox_events`, and `processed_events`.
+- **Database & Persistence:** Dedicated PostgreSQL database (`order_db`) with Hibernate DDL Auto (`spring.jpa.hibernate.ddl-auto: update`) managing `carts`, `cart_items`, `orders`, `order_items`, `order_status_history`, `idempotency_records`, `outbox_events`, and `processed_events`.
 - **Owner-Scoped Security & Tenant Isolation:** Current customer ID is derived strictly from trusted Gateway-signed assertion tokens via `TrustedHeaderAuthenticationFilter` and `SecurityUtils`. Customer APIs reject spoofed customer IDs and scope all database operations by authenticated customer UUID.
 - **Idempotent Checkout Boundary:** Checkout requests require an `Idempotency-Key` header and payload fingerprinting. Network calls to Identity (address snapshot), Catalog (current price snapshot), and Inventory (stock reservation) occur strictly outside local database transactions.
 - **Atomic Local Persistence & Synchronous Compensation:** Upon successful Inventory reservation, local order persistence (`PENDING` order, item snapshots, initial status history, outbox event, idempotency record completion, cart clearing) commits atomically. If local commit fails, the transaction is rolled back, the reservation is synchronously released via `POST /internal/inventory/reservations/{orderId}/release`, and the idempotency record is recorded as `FAILED`.
@@ -171,24 +171,25 @@ Order Service owns customer shopping carts, idempotent order checkout, order lif
 
 ---
 
-## 9. Notification Service Architecture (`notification-service` v0.1.1)
+## 9. Notification Service Architecture (`notification-service` v0.1.3)
 
 Notification Service manages durable transactional email notifications, template rendering, bounded SMTP delivery, automatic DLQ redrive, and PII retention lifecycle.
 
 ### Key Architectural Invariants
-- **Database & Persistence:** Dedicated PostgreSQL database (`notification_db`) with Flyway migrations (`V1__init_notification_schema.sql`, `V2__seed_notification_templates.sql`) managing `notification_templates`, `notification_logs`, and `processed_events`.
+- **Database & Persistence:** Dedicated PostgreSQL database (`notification_db`) with Hibernate DDL Auto (`spring.jpa.hibernate.ddl-auto: update`) and `NotificationTemplateDataSeeder` managing `notification_templates`, `notification_logs`, and `processed_events`.
 - **Durable Kafka Ingestion & Deduplication:** Subscribes to 5 approved domain topics (`user.registered`, `order.status-changed`, `order.cancelled`, `payment.succeeded`, `payment.refund-completed`). Filters `order.status-changed` for `CONFIRMED` orders only. In a single local database transaction, saves `NotificationLog` in `QUEUED` state and records `processed_events` for consumer group `notification-service-group` before acknowledging offsets. Duplicates are safely acknowledged as no-ops.
 - **Zero-Trust Inter-Service Snapshots:** Calls `GET /internal/orders/{orderId}/notification-snapshot` (`ROLE_SERVICE_NOTIFICATION`) for order snapshot and item rows, and `GET /internal/users/{userId}` for recipient email/name. Secrets are configured externally via `${INTERNAL_SERVICE_KEYS_NOTIFICATION_SERVICE}` without hardcoded fallbacks.
 - **Template Rendering & Bounded SMTP Worker:** Vietnamese HTML templates render with escaped values and safe item rows. A bounded worker atomically claims `QUEUED`/`FAILED` jobs with a 10-minute lease and delivers through `JavaMailSender` outside database transactions, applying exponential backoff and transitioning to `DEAD_LETTER` after 3 attempts.
 - **Auto-Redrive & DLQ Fencing:** Scheduled worker scans `DEAD_LETTER` jobs with a 5-minute cooldown (up to 10 total attempts), claims atomically with a unique claim token and 10-minute lease, fencing stale workers.
 - **PII Retention Purge:** Daily job (03:00 UTC) scrubs records older than 30 days (`[PURGED_PII]`, masked recipient `j***e@domain.com`, `[PURGED_PII_LOG]`), converts `QUEUED`/`REDRIVING` to `EXPIRED_UNSENT`, and preserves deduplication keys and audit history.
 - **Admin Management APIs:** `GET /api/v1/admin/notifications/dlq` (paginated, masked recipient), `GET /api/v1/admin/notifications/{id}` (full detail), and `POST /api/v1/admin/notifications/redrive-dlq` (rejects purged records with 422 `BUSINESS_RULE_VIOLATION`), strictly protected by `ROLE_ADMINISTRATOR`.
-## 10. Payment Service Architecture (`payment-service` v0.1.1)
+
+## 10. Payment Service Architecture (`payment-service` v0.1.2)
 
 Payment Service handles payment intent generation with VNPAY v2.1 redirect URLs, public GET IPN checksum verification, idempotent state machine transitions, manual/automated refund orchestration with atomic ceiling reservation, outbox domain events, and multi-instance reconciliation workers.
 
 ### Key Architectural Invariants
-- **Source of Truth & Persistence:** PostgreSQL (`payment_db`) manages `payments`, `refunds`, and `payment_audit_logs` via Flyway migrations (`V1__init_payment_schema.sql`). Outbox events use `common-library` transactional outbox.
+- **Source of Truth & Persistence:** PostgreSQL (`payment_db`) manages `payments`, `refunds`, and `payment_audit_logs` via Hibernate DDL Auto (`spring.jpa.hibernate.ddl-auto: update`). Outbox events use `common-library` transactional outbox.
 - **VNPAY v2.1 Payment Intent:** `POST /api/v1/payments/initiate` fetches validated snapshot amount/currency/status from `order-service` via internal RestClient (`GET /internal/orders/{orderId}`). Generates deterministic HMAC-SHA512 signed payment URL (`vnp_Amount = VND * 100`) and stores `vnp_TxnRef` atomically. Concurrent initiate retries return the stored payment URL.
 - **Public IPN Verification & CAS Transitions:** Public callback (`GET /api/v1/payments/vnpay/ipn`) bypasses JWT at API Gateway and verifies VNPAY HMAC-SHA512 signature before database mutation. State transitions use atomic compare-and-swap (CAS) and append outbox events (`payment.succeeded`, `payment.failed`, `payment.late-success`). Replays return `RspCode: "02"`.
 - **Refund Orchestration & Hold Invariant:** Manual refunds (`POST /api/v1/admin/payments/{paymentId}/refunds`) and automated compensation reserve funds atomically (`total_refunded + refund_in_progress <= amount`) under row locks before calling VNPAY outside database transactions.
@@ -256,4 +257,18 @@ To resolve configuration duplication, drift, and single-point-of-truth ambiguity
 | **Service Auth** | `INTERNAL_KEY_ORDER`, `INTERNAL_KEY_NOTIFICATION`, `INTERNAL_KEY_PAYMENT` | Inter-service shared secret keys |
 | **Payment** | `VNPAY_TMN_CODE`, `VNPAY_HASH_SECRET`, `VNPAY_IPN_URL`, `VNPAY_RETURN_URL` | VNPAY integration keys |
 | **Cloud** | `CONFIG_SERVER_URL`, `EUREKA_SERVER_URL`, `SPRING_PROFILES_ACTIVE` | Spring Cloud discovery & config |
+
+---
+
+## 12. Database Schema Automation for MVP (v0.1.17)
+
+To eliminate Flyway Community Edition version incompatibility errors with PostgreSQL (PostgreSQL 16+) and accelerate local MVP feature iterations, the project transitioned all 6 relational microservices from Flyway to Hibernate Schema Automation:
+
+### Architecture & Mechanisms
+- **Automated DDL Evolution:** All services use `spring.jpa.hibernate.ddl-auto: update` managed globally through `config-server` (`application.yml` and service configs). Tables, columns, foreign keys, indexes, and transactional outbox schemas are dynamically synchronized from `@Entity` classes at service startup.
+- **ApplicationRunner Data Seeders:** Core initial database records are seeded idempotently via Spring Boot `ApplicationRunner` components:
+  - `IdentityDataSeeder` (`identity-service`): Seeds standard roles (`ROLE_CUSTOMER`, `ROLE_CATALOG_STAFF`, `ROLE_INVENTORY_STAFF`, `ROLE_ORDER_STAFF`, `ROLE_FINANCE_STAFF`, `ROLE_ADMINISTRATOR`) and default administrator account (`admin@ecom.local` / `Admin@123456`).
+  - `NotificationTemplateDataSeeder` (`notification-service`): Seeds 5 default Vietnamese HTML email templates (`user.registered`, `order.status-changed`, `order.cancelled`, `payment.succeeded`, `payment.refund-completed`).
+- **Archived SQL Reference:** Existing SQL migrations in `src/main/resources/db/migration/` are retained as architectural reference and baseline for future staging/production migration tool adoption.
+
 

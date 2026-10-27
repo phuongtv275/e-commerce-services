@@ -5,7 +5,7 @@ plugins {
 }
 
 group = 'com.example'
-version = '0.1.15'
+version = '0.1.16'
 description = 'identity-service'
 
 java {
@@ -31,11 +31,8 @@ dependencies {
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
-    // 3. Cơ sở Dữ liệu & Flyway Migration
+    // 3. Cơ sở Dữ liệu
     runtimeOnly 'org.postgresql:postgresql'
-    implementation 'org.springframework.boot:spring-boot-starter-flyway'
-    implementation 'org.flywaydb:flyway-core'
-    implementation 'org.flywaydb:flyway-database-postgresql'
 
     // 4. Redis Cache & Token Blacklist
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
