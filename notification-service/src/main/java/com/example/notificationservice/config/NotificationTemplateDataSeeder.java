@@ -117,22 +117,7 @@ public class NotificationTemplateDataSeeder implements ApplicationRunner {
                         .isActive(true)
                         .build(),
 
-                // 6. payment.failed
-                NotificationTemplate.builder()
-                        .eventType("payment.failed")
-                        .channel(NotificationChannel.EMAIL)
-                        .language("vi")
-                        .subjectTemplate("[E-Commerce] Thông báo giao dịch thanh toán không thành công cho đơn hàng #{{orderCode}}")
-                        .bodyTemplate("<!DOCTYPE html><html><body><h2>Xin chào {{customerName}},</h2>" +
-                                "<p>Giao dịch thanh toán cho đơn hàng <strong>#{{orderCode}}</strong> không thành công.</p>" +
-                                "<p><strong>Lý do:</strong> {{reason}}</p><br/>" +
-                                "<p>Vui lòng thử lại hoặc chọn phương thức thanh toán khác.</p>" +
-                                "<p>Trân trọng,<br/>Đội ngũ E-Commerce</p></body></html>")
-                        .version(1)
-                        .isActive(true)
-                        .build(),
-
-                // 7. user.password-reset-requested
+                // 6. user.password-reset-requested
                 NotificationTemplate.builder()
                         .eventType("user.password-reset-requested")
                         .channel(NotificationChannel.EMAIL)

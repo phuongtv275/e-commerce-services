@@ -3,6 +3,7 @@ WORKDIR /workspace
 
 COPY gradlew settings.gradle build.gradle gradle.properties ./
 COPY gradle ./gradle
+COPY common-library ./common-library
 COPY notification-service ./notification-service
 
 RUN chmod +x gradlew && ./gradlew :notification-service:bootJar --no-daemon -x test

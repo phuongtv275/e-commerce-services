@@ -45,7 +45,6 @@ class NotificationTemplateDataSeederTests {
                         "order.cancelled",
                         "payment.succeeded",
                         "payment.refund-completed",
-                        "payment.failed",
                         "user.password-reset-requested"
                 );
     }
