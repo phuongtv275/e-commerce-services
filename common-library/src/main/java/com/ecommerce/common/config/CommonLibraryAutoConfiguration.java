@@ -41,7 +41,8 @@ import java.util.Base64;
         "org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration",
         "org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration",
         "org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration",
-        "org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration"
+        "org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration",
+        "org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration"
 })
 @EnableConfigurationProperties(CommonLibrarySecurityProperties.class)
 @Import(CommonLibraryAutoConfiguration.CommonLibraryPackagesRegistrar.class)

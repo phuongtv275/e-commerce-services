@@ -28,4 +28,9 @@ public interface PasswordResetRepository extends JpaRepository<PasswordReset, UU
     }
 
     Optional<PasswordReset> findByUser(User user);
+
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM PasswordReset p WHERE p.used = true OR p.expiresAt < :cutoff")
+    int deleteExpiredOrUsedResets(@Param("cutoff") Instant cutoff);
 }

@@ -71,6 +71,44 @@ class RepositoryLayerTests {
     }
 
     @Test
+    @DisplayName("UserRepository: findAll with Specification should eager-fetch roles via @EntityGraph")
+    void testFindAllSpecificationEagerFetchesRoles() {
+        Role roleAdmin = roleRepository.save(Role.builder().roleName(RoleName.ROLE_ADMINISTRATOR).description("Admin").build());
+        Role roleCustomer = roleRepository.save(Role.builder().roleName(RoleName.ROLE_CUSTOMER).description("Customer").build());
+
+        User user1 = User.builder()
+                .email("admin_spec@example.com")
+                .passwordHash("hashed_password")
+                .fullName("Admin User")
+                .phoneNumber("0912345671")
+                .status(UserStatus.ACTIVE)
+                .emailVerified(true)
+                .roles(Set.of(roleAdmin, roleCustomer))
+                .build();
+        userRepository.save(user1);
+
+        entityManager.flush();
+        entityManager.clear();
+
+        // Query with specification and pagination
+        org.springframework.data.domain.Page<User> page = userRepository.findAll(
+                (root, query, cb) -> cb.isNull(root.get("deletedAt")),
+                org.springframework.data.domain.PageRequest.of(0, 10)
+        );
+
+        assertThat(page.getContent()).isNotEmpty();
+        // Since persistence context is cleared, accessing roles proves eager fetch via EntityGraph worked
+        User fetchedUser = page.getContent().stream()
+                .filter(u -> u.getEmail().equals("admin_spec@example.com"))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(fetchedUser.getRoles()).hasSize(2);
+        assertThat(fetchedUser.getRoles().stream().map(Role::getRoleName))
+                .containsExactlyInAnyOrder(RoleName.ROLE_ADMINISTRATOR, RoleName.ROLE_CUSTOMER);
+    }
+
+    @Test
     @DisplayName("PasswordResetRepository: consumeResetTokenAtomic should return 1 on first use, 0 on replay")
     void testConsumeResetTokenAtomic() {
         User user = User.builder()
@@ -168,5 +206,106 @@ class RepositoryLayerTests {
         // User B accesses their own address
         Optional<Address> authorized = addressRepository.findByIdAndUserIdAndDeletedAtIsNull(addressOfB.getId(), userB.getId());
         assertThat(authorized).isPresent();
+    }
+
+    @Test
+    @DisplayName("RefreshTokenRepository: deleteExpiredOrRevokedTokens should purge tokens older than cutoff")
+    void testDeleteExpiredOrRevokedTokens() {
+        User user = userRepository.save(User.builder()
+                .email("purge_token@example.com")
+                .passwordHash("hashed")
+                .fullName("Purge User")
+                .status(UserStatus.ACTIVE)
+                .emailVerified(true)
+                .build());
+
+        Instant now = Instant.now();
+        Instant cutoff = now.minusSeconds(86400); // 1 day ago
+
+        // Token 1: revoked = true, expiresAt < cutoff -> should be purged
+        RefreshToken t1 = refreshTokenRepository.save(RefreshToken.builder()
+                .user(user)
+                .tokenHash("purge_hash_1")
+                .familyId(UUID.randomUUID())
+                .expiresAt(cutoff.minusSeconds(100))
+                .revoked(true)
+                .build());
+
+        // Token 2: revoked = false, expiresAt < cutoff -> should be purged
+        RefreshToken t2 = refreshTokenRepository.save(RefreshToken.builder()
+                .user(user)
+                .tokenHash("purge_hash_2")
+                .familyId(UUID.randomUUID())
+                .expiresAt(cutoff.minusSeconds(50))
+                .revoked(false)
+                .build());
+
+        // Token 3: revoked = false, expiresAt > cutoff -> should be kept
+        RefreshToken t3 = refreshTokenRepository.save(RefreshToken.builder()
+                .user(user)
+                .tokenHash("purge_hash_3")
+                .familyId(UUID.randomUUID())
+                .expiresAt(cutoff.plusSeconds(3600))
+                .revoked(false)
+                .build());
+
+        entityManager.flush();
+
+        int deletedCount = refreshTokenRepository.deleteExpiredOrRevokedTokens(cutoff);
+        assertThat(deletedCount).isEqualTo(2);
+
+        entityManager.clear();
+        assertThat(refreshTokenRepository.findByTokenHash("purge_hash_1")).isEmpty();
+        assertThat(refreshTokenRepository.findByTokenHash("purge_hash_2")).isEmpty();
+        assertThat(refreshTokenRepository.findByTokenHash("purge_hash_3")).isPresent();
+    }
+
+    @Test
+    @DisplayName("PasswordResetRepository: deleteExpiredOrUsedResets should purge used or expired resets")
+    void testDeleteExpiredOrUsedResets() {
+        User user = userRepository.save(User.builder()
+                .email("purge_reset@example.com")
+                .passwordHash("hashed")
+                .fullName("Reset Purge User")
+                .status(UserStatus.ACTIVE)
+                .emailVerified(true)
+                .build());
+
+        Instant now = Instant.now();
+        Instant cutoff = now.minusSeconds(86400);
+
+        // Reset 1: used = true -> should be purged
+        PasswordReset r1 = passwordResetRepository.save(PasswordReset.builder()
+                .user(user)
+                .tokenHash("reset_hash_1")
+                .expiresAt(cutoff.plusSeconds(3600))
+                .used(true)
+                .build());
+
+        // Reset 2: used = false, expiresAt < cutoff -> should be purged
+        PasswordReset r2 = passwordResetRepository.save(PasswordReset.builder()
+                .user(user)
+                .tokenHash("reset_hash_2")
+                .expiresAt(cutoff.minusSeconds(100))
+                .used(false)
+                .build());
+
+        // Reset 3: used = false, expiresAt > cutoff -> should be kept
+        PasswordReset r3 = passwordResetRepository.save(PasswordReset.builder()
+                .user(user)
+                .tokenHash("reset_hash_3")
+                .expiresAt(cutoff.plusSeconds(3600))
+                .used(false)
+                .build());
+
+        entityManager.flush();
+
+        int deletedCount = passwordResetRepository.deleteExpiredOrUsedResets(cutoff);
+        assertThat(deletedCount).isEqualTo(2);
+
+        entityManager.clear();
+        assertThat(passwordResetRepository.findByTokenHash("reset_hash_1")).isEmpty();
+        assertThat(passwordResetRepository.findByTokenHash("reset_hash_2")).isEmpty();
+        assertThat(passwordResetRepository.findByTokenHash("reset_hash_3")).isPresent();
     }
 }

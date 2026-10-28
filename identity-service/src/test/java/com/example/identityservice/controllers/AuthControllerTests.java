@@ -401,11 +401,12 @@ class AuthControllerTests {
 
         List<OutboxEvent> events = outboxEventRepository.findAll();
         assertThat(events).hasSize(1);
-        assertThat(events.get(0).getEventType()).isEqualTo("PasswordResetRequestedEvent");
+        assertThat(events.get(0).getEventType()).isEqualTo("user.password-reset-requested");
 
         // Parse raw token from outbox payload
         String payload = events.get(0).getPayload();
-        String rawToken = objectMapper.readTree(payload).get("token").asText();
+        com.fasterxml.jackson.databind.JsonNode payloadNode = objectMapper.readTree(payload);
+        String rawToken = payloadNode.has("resetToken") ? payloadNode.get("resetToken").asText() : payloadNode.get("token").asText();
 
         // Reset password
         ResetPasswordReq resetReq = new ResetPasswordReq(rawToken, "NewPassword123@");

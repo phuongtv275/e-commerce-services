@@ -251,4 +251,70 @@ class NotificationKafkaConsumerTests {
         verify(acknowledgment, never()).acknowledge();
         verify(ingestionService, never()).processAndQueue(any(), any(), any(), any(), any(), any());
     }
+
+    @Test
+    @DisplayName("Positive: Consume user.password-reset-requested event and queue reset password email")
+    void testConsume_UserPasswordResetRequested_Positive() throws Exception {
+        UUID eventId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UserPasswordResetRequestedEvent event = UserPasswordResetRequestedEvent.builder()
+                .eventId(eventId)
+                .userId(userId)
+                .email("reset@example.com")
+                .fullName("Trần Văn B")
+                .resetToken("reset-token-xyz")
+                .correlationId("corr-reset-1")
+                .build();
+
+        String payload = objectMapper.writeValueAsString(event);
+        ConsumerRecord<String, String> record = new ConsumerRecord<>("user.password-reset-requested", 0, 15L, "key", payload);
+
+        consumer.consume(record, acknowledgment);
+
+        ArgumentCaptor<Map<String, Object>> paramsCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(ingestionService).processAndQueue(
+                eq(eventId.toString()),
+                eq("user.password-reset-requested"),
+                eq("corr-reset-1"),
+                eq("reset@example.com"),
+                paramsCaptor.capture(),
+                any()
+        );
+
+        Map<String, Object> params = paramsCaptor.getValue();
+        assertEquals("Trần Văn B", params.get("fullName"));
+        assertEquals("reset-token-xyz", params.get("resetToken"));
+
+        verify(acknowledgment).acknowledge();
+    }
+
+    @Test
+    @DisplayName("Negative: Consume user.password-reset-requested missing required fields skips ingestion but ACKs")
+    void testConsume_UserPasswordResetRequested_MissingFields_Negative() throws Exception {
+        UserPasswordResetRequestedEvent event = UserPasswordResetRequestedEvent.builder()
+                .eventId(null) // missing eventId
+                .email("reset@example.com")
+                .resetToken("token-123")
+                .build();
+
+        String payload = objectMapper.writeValueAsString(event);
+        ConsumerRecord<String, String> record = new ConsumerRecord<>("user.password-reset-requested", 0, 16L, "key", payload);
+
+        consumer.consume(record, acknowledgment);
+
+        verify(ingestionService, never()).processAndQueue(any(), any(), any(), any(), any(), any());
+        verify(acknowledgment).acknowledge();
+    }
+
+    @Test
+    @DisplayName("Negative: Consume user.password-reset-requested corrupted payload throws exception without ACK")
+    void testConsume_UserPasswordResetRequested_CorruptedPayload_Negative() {
+        String corruptedJson = "{ \"eventId\": \"invalid-uuid\", \"email\": ";
+        ConsumerRecord<String, String> record = new ConsumerRecord<>("user.password-reset-requested", 0, 17L, "key", corruptedJson);
+
+        assertThrows(RuntimeException.class, () -> consumer.consume(record, acknowledgment));
+
+        verify(acknowledgment, never()).acknowledge();
+        verify(ingestionService, never()).processAndQueue(any(), any(), any(), any(), any(), any());
+    }
 }

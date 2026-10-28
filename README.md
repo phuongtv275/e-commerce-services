@@ -3,7 +3,7 @@
 Backend Microservices platform for multi-channel e-commerce system built with Spring Boot, Spring Cloud, Gradle, and Docker.
 
 - **Artifact Name:** `e-commerce-services`
-- **Version:** `0.1.16` (Semantic Versioning)
+- **Version:** `0.1.17` (Semantic Versioning)
 - **External Config Repository:** `../e-commerce-services-config`
 
 ---
@@ -12,14 +12,14 @@ Backend Microservices platform for multi-channel e-commerce system built with Sp
 
 | Service | Port | Description | Technology Stack |
 | :--- | :---: | :--- | :--- |
-| **common-library** | N/A | Shared Library: API Response, Global Exception, Tracing & Zero-Trust Filters, Transactional Outbox, Event Contracts, Idempotency | Plain Java Library (`java-library`), Java 21, Spring Boot BOM |
+| **common-library** | N/A | v0.1.9: Shared Library: API Response, Global Exception, Tracing & Zero-Trust Filters, Transactional Outbox (Kafka AutoConfiguration ordering), Event Contracts, Idempotency | Plain Java Library (`java-library`), Java 21, Spring Boot BOM |
 | **api-gateway** | `8080` | Single Public Entrypoint, Centralized Routing, Header Sanitization, JWT Auth & Blacklist, RSA Assertion Signing (Audience Binding), Redis Rate Limiter, W3C CORS & Security Headers | Spring Cloud Gateway (WebFlux), Reactive Redis, Eureka Client |
-| **identity-service** | Internal (`8081`) | v0.1.16: Authentication, Authorization, Users, IAM, Audit Logs, Inter-Service Auth, Internal Address Lookup (`GET /internal/users/{userId}/addresses/{addressId}`) (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`identity_db`), Redis Blacklist, Hibernate DDL Auto & IdentityDataSeeder |
+| **identity-service** | Internal (`8081`) | v0.1.18: Authentication, Authorization, Users, IAM, Audit Logs, Inter-Service Auth, Internal Address Lookup (`GET /internal/users/{userId}/addresses/{addressId}`), Local JWT Filter Fallback, Kafka Outbox Publisher (`user.registered`, `user.password-reset-requested`) (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`identity_db`), Redis Blacklist, Hibernate DDL Auto & IdentityDataSeeder |
 | **catalog-service** | Internal (`8082`) | v0.1.2: Products, Categories, Brands, SKUs, Elasticsearch Search & Safe Reindexing (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`catalog_db`), Hibernate DDL Auto, Elasticsearch 8.13, Spring Kafka |
 | **inventory-service** | Internal (`8083`) | v0.1.3: Stock ledger, reservations, expiry, oversell-safe stock updates, Batch Stock Availability (`POST /internal/inventory/stocks/batch`) | Spring Boot WebMVC, PostgreSQL (`inventory_db`), Hibernate DDL Auto, Kafka |
 | **order-service** | Internal (`8084`) | v0.1.2: Cart, Orders, Checkout, Outbox, Idempotency, Order Lifecycle State Machine (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`order_db`), Hibernate DDL Auto, Kafka |
 | **payment-service** | Internal (`8085`) | v0.1.2: Payment Transactions, Refunds (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`payment_db`), Hibernate DDL Auto |
-| **notification-service** | Internal (`8086`) | v0.1.3: Durable Kafka event ingestion, Vietnamese HTML email rendering, bounded JavaMailSender SMTP delivery, retry/DLQ auto-redrive, PII retention purge, Admin DLQ APIs (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`notification_db`), Spring Kafka, JavaMailSender, Hibernate DDL Auto & TemplateDataSeeder |
+| **notification-service** | Internal (`8086`) | v0.1.4: Durable Kafka event ingestion, Vietnamese HTML email rendering, bounded JavaMailSender SMTP delivery, retry/DLQ auto-redrive, PII retention purge, Admin DLQ APIs (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`notification_db`), Spring Kafka, JavaMailSender, Hibernate DDL Auto & TemplateDataSeeder |
 | **eureka-server** | `8761` | Service Registry & Discovery | Spring Cloud Netflix Eureka Server |
 | **config-server** | `8888` | Centralized Configuration Management | Spring Cloud Config Server (`native` profile) |
 | **PostgreSQL** | `5432` | Multi-Tenant Database | PostgreSQL 16 Alpine (6 independent databases) |
@@ -102,7 +102,7 @@ Configure `SPRING_MAIL_HOST`, `SPRING_MAIL_PORT`, `SPRING_MAIL_USERNAME`, `SPRIN
 
 ---
 
-## 5. Identity Service Architecture (`identity-service` v0.1.16)
+## 5. Identity Service Architecture (`identity-service` v0.1.17)
 
 Identity Service handles authentication, authorization, user profiles, address books, and administrative IAM capabilities with zero-trust inter-service boundaries.
 
@@ -110,8 +110,9 @@ Identity Service handles authentication, authorization, user profiles, address b
 - **Password Security:** Hashes stored using BCrypt with cost factor 12 (`BCryptPasswordEncoder(12)`).
 - **Session & Refresh Token Security:** Refresh tokens are never stored plaintext; only SHA-256 hashes are persisted. Supports token rotation with pessimistic locking (`PESSIMISTIC_WRITE`). Token reuse attacks immediately revoke the entire token family.
 - **Token Invalidation:** Logout invalidates access tokens using Redis TTL-based blacklisting and immediately revokes active refresh tokens.
+- **Local JWT Authentication Filter Fallback:** `LocalJwtAuthenticationFilter` intercepts requests with `Authorization: Bearer <token>` when no `X-Gateway-Assertion` is present (for internal/integration testing), verifies signature, checks Redis blacklist, and establishes `SecurityContextHolder` authentication.
 - **Anti-BOLA Protection:** All address book operations (`GET`, `PUT`, `DELETE`, `PATCH /default`) strictly enforce `user_id == currentUserId`.
-- **Atomic Password Resets:** Reset tokens are consumed using atomic CAS SQL updates (`UPDATE ... SET used = true WHERE token_hash = :hash AND used = false AND expires_at > now()`) preventing concurrent replay.
+- **Atomic Password Resets & Outbox Event:** Reset tokens are consumed using atomic CAS SQL updates. Requesting password reset emits transactional outbox event `UserPasswordResetRequestedEvent` with topic `user.password-reset-requested`.
 - **Inter-Service Security & Address Lookup:** Internal endpoints (`/internal/**`) require caller-specific keys (`X-Calling-Service` & `X-Internal-Service-Key`), assigning caller-scoped roles (`ROLE_SERVICE_ORDER`, `ROLE_SERVICE_NOTIFICATION`). Includes `GET /internal/users/{userId}/addresses/{addressId}` specifically permitted for `ROLE_SERVICE_ORDER` returning address snapshots without leaking foreign addresses. Rejects `X-Gateway-Assertion` to enforce private network boundary.
 - **Audit Logging:** Administrative IAM modifications (role assignment/revocation) and security-critical operations are recorded in `audit_logs` with actor details, deltas, and correlation IDs.
 - **E2E Integration Verification:** 25 production-grade test scenarios across public authentication, session security, BOLA prevention, RBAC, and zero-trust internal endpoints.
@@ -171,13 +172,13 @@ Order Service owns customer shopping carts, idempotent order checkout, order lif
 
 ---
 
-## 9. Notification Service Architecture (`notification-service` v0.1.3)
+## 9. Notification Service Architecture (`notification-service` v0.1.4)
 
 Notification Service manages durable transactional email notifications, template rendering, bounded SMTP delivery, automatic DLQ redrive, and PII retention lifecycle.
 
 ### Key Architectural Invariants
 - **Database & Persistence:** Dedicated PostgreSQL database (`notification_db`) with Hibernate DDL Auto (`spring.jpa.hibernate.ddl-auto: update`) and `NotificationTemplateDataSeeder` managing `notification_templates`, `notification_logs`, and `processed_events`.
-- **Durable Kafka Ingestion & Deduplication:** Subscribes to 5 approved domain topics (`user.registered`, `order.status-changed`, `order.cancelled`, `payment.succeeded`, `payment.refund-completed`). Filters `order.status-changed` for `CONFIRMED` orders only. In a single local database transaction, saves `NotificationLog` in `QUEUED` state and records `processed_events` for consumer group `notification-service-group` before acknowledging offsets. Duplicates are safely acknowledged as no-ops.
+- **Durable Kafka Ingestion & Deduplication:** Subscribes to 6 approved domain topics (`user.registered`, `order.status-changed`, `order.cancelled`, `payment.succeeded`, `payment.refund-completed`, `user.password-reset-requested`). Filters `order.status-changed` for `CONFIRMED` orders only. In a single local database transaction, saves `NotificationLog` in `QUEUED` state and records `processed_events` for consumer group `notification-service-group` before acknowledging offsets. Duplicates are safely acknowledged as no-ops.
 - **Zero-Trust Inter-Service Snapshots:** Calls `GET /internal/orders/{orderId}/notification-snapshot` (`ROLE_SERVICE_NOTIFICATION`) for order snapshot and item rows, and `GET /internal/users/{userId}` for recipient email/name. Secrets are configured externally via `${INTERNAL_SERVICE_KEYS_NOTIFICATION_SERVICE}` without hardcoded fallbacks.
 - **Template Rendering & Bounded SMTP Worker:** Vietnamese HTML templates render with escaped values and safe item rows. A bounded worker atomically claims `QUEUED`/`FAILED` jobs with a 10-minute lease and delivers through `JavaMailSender` outside database transactions, applying exponential backoff and transitioning to `DEAD_LETTER` after 3 attempts.
 - **Auto-Redrive & DLQ Fencing:** Scheduled worker scans `DEAD_LETTER` jobs with a 5-minute cooldown (up to 10 total attempts), claims atomically with a unique claim token and 10-minute lease, fencing stale workers.

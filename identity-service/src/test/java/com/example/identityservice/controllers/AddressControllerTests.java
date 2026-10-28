@@ -120,7 +120,7 @@ class AddressControllerTests {
                 .andExpect(jsonPath("$.data[0].id").value(addressId.toString()));
 
         // 3. Update Address
-        AddressReq updateReq = new AddressReq("User A Office", "0912345678", "456 Office Blvd", null, "District 2", "Hanoi", "Vietnam", false);
+        AddressReq updateReq = new AddressReq("User A Office", "0912345678", "456 Office Blvd", null, "District 2", "Hanoi", "Vietnam", true);
         mockMvc.perform(put("/api/v1/users/me/addresses/" + addressId)
                         .with(user(userA.getId().toString()))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -248,5 +248,156 @@ class AddressControllerTests {
         updatedAddr2 = addressRepository.findById(addr2.getId()).orElseThrow();
         assertThat(updatedAddr1.isDefault()).isTrue();
         assertThat(updatedAddr2.isDefault()).isFalse();
+    }
+
+    @Test
+    @DisplayName("ISSUE-06: Cannot remove default status from the only address")
+    void testCannotRemoveDefaultStatusFromOnlyAddress() throws Exception {
+        Address addr = addressRepository.save(Address.builder()
+                .user(userA)
+                .recipientName("Single Address")
+                .phone("0912345678")
+                .addressLine1("123 Only St")
+                .city("Hanoi")
+                .country("Vietnam")
+                .isDefault(true)
+                .build());
+
+        AddressReq req = new AddressReq("Single Address Updated", "0912345678", "123 Only St", null, "Dist", "Hanoi", "Vietnam", false);
+
+        mockMvc.perform(put("/api/v1/users/me/addresses/" + addr.getId())
+                        .with(user(userA.getId().toString()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Không thể bỏ trạng thái mặc định của địa chỉ duy nhất"));
+    }
+
+    @Test
+    @DisplayName("ISSUE-06: Setting isDefault = false on default address auto-promotes latest updated remaining address")
+    void testUpdateDefaultAddressToFalseAutoPromotesLatestUpdatedAddress() throws Exception {
+        Address addr1 = addressRepository.save(Address.builder()
+                .user(userA)
+                .recipientName("Address 1 (Default)")
+                .phone("0912345678")
+                .addressLine1("111 First Ave")
+                .city("Hanoi")
+                .country("Vietnam")
+                .isDefault(true)
+                .build());
+
+        Thread.sleep(15);
+        Address addr2 = addressRepository.save(Address.builder()
+                .user(userA)
+                .recipientName("Address 2 (Older)")
+                .phone("0912345678")
+                .addressLine1("222 Second Ave")
+                .city("Hanoi")
+                .country("Vietnam")
+                .isDefault(false)
+                .build());
+
+        Thread.sleep(15);
+        Address addr3 = addressRepository.save(Address.builder()
+                .user(userA)
+                .recipientName("Address 3 (Newer)")
+                .phone("0912345678")
+                .addressLine1("333 Third Ave")
+                .city("Hanoi")
+                .country("Vietnam")
+                .isDefault(false)
+                .build());
+
+        // Update addr1 with isDefault = false
+        AddressReq req = new AddressReq("Address 1 Updated", "0912345678", "111 First Ave", null, "Dist", "Hanoi", "Vietnam", false);
+        mockMvc.perform(put("/api/v1/users/me/addresses/" + addr1.getId())
+                        .with(user(userA.getId().toString()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.default").value(false));
+
+        Address reloadedAddr1 = addressRepository.findById(addr1.getId()).orElseThrow();
+        Address reloadedAddr2 = addressRepository.findById(addr2.getId()).orElseThrow();
+        Address reloadedAddr3 = addressRepository.findById(addr3.getId()).orElseThrow();
+
+        assertThat(reloadedAddr1.isDefault()).isFalse();
+        // addr3 is latest updated, so it should be promoted to default
+        assertThat(reloadedAddr3.isDefault()).isTrue();
+        assertThat(reloadedAddr2.isDefault()).isFalse();
+    }
+
+    @Test
+    @DisplayName("ISSUE-06: Deleting default address auto-promotes latest updated remaining address")
+    void testDeleteDefaultAddressAutoPromotesLatestUpdatedRemainingAddress() throws Exception {
+        Address addr1 = addressRepository.save(Address.builder()
+                .user(userA)
+                .recipientName("Address 1 (Default)")
+                .phone("0912345678")
+                .addressLine1("111 First Ave")
+                .city("Hanoi")
+                .country("Vietnam")
+                .isDefault(true)
+                .build());
+
+        Thread.sleep(15);
+        Address addr2 = addressRepository.save(Address.builder()
+                .user(userA)
+                .recipientName("Address 2 (Older)")
+                .phone("0912345678")
+                .addressLine1("222 Second Ave")
+                .city("Hanoi")
+                .country("Vietnam")
+                .isDefault(false)
+                .build());
+
+        Thread.sleep(15);
+        Address addr3 = addressRepository.save(Address.builder()
+                .user(userA)
+                .recipientName("Address 3 (Newer)")
+                .phone("0912345678")
+                .addressLine1("333 Third Ave")
+                .city("Hanoi")
+                .country("Vietnam")
+                .isDefault(false)
+                .build());
+
+        // Delete addr1
+        mockMvc.perform(delete("/api/v1/users/me/addresses/" + addr1.getId())
+                        .with(user(userA.getId().toString())))
+                .andExpect(status().isOk());
+
+        Address reloadedAddr1 = addressRepository.findById(addr1.getId()).orElseThrow();
+        Address reloadedAddr2 = addressRepository.findById(addr2.getId()).orElseThrow();
+        Address reloadedAddr3 = addressRepository.findById(addr3.getId()).orElseThrow();
+
+        assertThat(reloadedAddr1.getDeletedAt()).isNotNull();
+        assertThat(reloadedAddr1.isDefault()).isFalse();
+        // addr3 was newer, should be promoted to default
+        assertThat(reloadedAddr3.isDefault()).isTrue();
+        assertThat(reloadedAddr2.isDefault()).isFalse();
+    }
+
+    @Test
+    @DisplayName("ISSUE-06: Deleting the only default address succeeds leaving 0 addresses")
+    void testDeleteOnlyDefaultAddressSucceeds() throws Exception {
+        Address addr = addressRepository.save(Address.builder()
+                .user(userA)
+                .recipientName("Only Address")
+                .phone("0912345678")
+                .addressLine1("100 Sole St")
+                .city("Hanoi")
+                .country("Vietnam")
+                .isDefault(true)
+                .build());
+
+        mockMvc.perform(delete("/api/v1/users/me/addresses/" + addr.getId())
+                        .with(user(userA.getId().toString())))
+                .andExpect(status().isOk());
+
+        Address reloadedAddr = addressRepository.findById(addr.getId()).orElseThrow();
+        assertThat(reloadedAddr.getDeletedAt()).isNotNull();
+        assertThat(reloadedAddr.isDefault()).isFalse();
+        assertThat(addressRepository.findAllByUserIdAndDeletedAtIsNull(userA.getId())).isEmpty();
     }
 }

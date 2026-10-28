@@ -4,8 +4,10 @@ import com.ecommerce.common.filter.InternalServiceFilter;
 import com.ecommerce.common.filter.TrustedHeaderAuthenticationFilter;
 import com.example.identityservice.security.exception.AccessDenied;
 import com.example.identityservice.security.exception.JwtEntryPoint;
+import com.example.identityservice.security.filter.LocalJwtAuthenticationFilter;
 import com.example.identityservice.security.principal.MyUserDetailsService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -33,6 +35,7 @@ public class SecurityConfig {
     private final AccessDenied accessDenied;
     private final InternalServiceFilter internalServiceFilter;
     private final TrustedHeaderAuthenticationFilter trustedHeaderAuthenticationFilter;
+    private final LocalJwtAuthenticationFilter localJwtAuthenticationFilter;
 
     // Password encoder with BCrypt cost 12
     @Bean
@@ -88,6 +91,14 @@ public class SecurityConfig {
                 )
                 .addFilterBefore(internalServiceFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(trustedHeaderAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(localJwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
+    }
+
+    @Bean
+    public FilterRegistrationBean<LocalJwtAuthenticationFilter> localJwtAuthenticationFilterRegistration(LocalJwtAuthenticationFilter filter) {
+        FilterRegistrationBean<LocalJwtAuthenticationFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
     }
 }

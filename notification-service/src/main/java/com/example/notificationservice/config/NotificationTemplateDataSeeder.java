@@ -130,6 +130,21 @@ public class NotificationTemplateDataSeeder implements ApplicationRunner {
                                 "<p>Trân trọng,<br/>Đội ngũ E-Commerce</p></body></html>")
                         .version(1)
                         .isActive(true)
+                        .build(),
+
+                // 7. user.password-reset-requested
+                NotificationTemplate.builder()
+                        .eventType("user.password-reset-requested")
+                        .channel(NotificationChannel.EMAIL)
+                        .language("vi")
+                        .subjectTemplate("[E-Commerce] Yêu cầu đặt lại mật khẩu")
+                        .bodyTemplate("<!DOCTYPE html><html><body><h2>Xin chào {{fullName}},</h2>" +
+                                "<p>Bạn đã yêu cầu đặt lại mật khẩu cho tài khoản tại hệ thống E-Commerce.</p>" +
+                                "<p>Mã đặt lại mật khẩu của bạn là: <strong>{{resetToken}}</strong></p>" +
+                                "<p>Nếu bạn không thực hiện yêu cầu này, xin vui lòng bỏ qua email.</p><br/>" +
+                                "<p>Trân trọng,<br/>Đội ngũ E-Commerce</p></body></html>")
+                        .version(1)
+                        .isActive(true)
                         .build()
         );
     }

@@ -38,7 +38,8 @@ public class NotificationKafkaConsumer {
                     "#{'${notification.kafka.topics.order-status-changed:order.status-changed}'}",
                     "#{'${notification.kafka.topics.order-cancelled:order.cancelled}'}",
                     "#{'${notification.kafka.topics.payment-succeeded:payment.succeeded}'}",
-                    "#{'${notification.kafka.topics.payment-refund-completed:payment.refund-completed}'}"
+                    "#{'${notification.kafka.topics.payment-refund-completed:payment.refund-completed}'}",
+                    "#{'${notification.kafka.topics.user-password-reset-requested:user.password-reset-requested}'}"
             },
             groupId = "${notification.kafka.consumer-group:${spring.kafka.consumer.group-id:notification-service-group}}",
             containerFactory = "kafkaListenerContainerFactory"
@@ -60,6 +61,8 @@ public class NotificationKafkaConsumer {
                 handlePaymentSucceeded(record.value(), record.partition(), record.offset());
             } else if (topic.endsWith("payment.refund-completed")) {
                 handleRefundCompleted(record.value(), record.partition(), record.offset());
+            } else if (topic.endsWith("user.password-reset-requested")) {
+                handleUserPasswordResetRequested(record.value(), record.partition(), record.offset());
             } else {
                 log.warn("Ignoring unexpected topic: {}", topic);
             }
@@ -92,6 +95,27 @@ public class NotificationKafkaConsumer {
                 "user.registered",
                 event.getCorrelationId(),
                 event.getEmail(),
+                params,
+                event
+        );
+    }
+
+    private void handleUserPasswordResetRequested(String rawPayload, int partition, long offset) throws Exception {
+        UserPasswordResetRequestedEvent event = objectMapper.readValue(rawPayload, UserPasswordResetRequestedEvent.class);
+        if (event.eventId() == null || event.email() == null || event.email().isBlank()) {
+            log.warn("UserPasswordResetRequestedEvent missing required eventId or email at partition: {}, offset: {}", partition, offset);
+            return;
+        }
+
+        Map<String, Object> params = new HashMap<>();
+        params.put("fullName", event.fullName() != null ? event.fullName() : "Quý khách");
+        params.put("resetToken", event.resetToken() != null ? event.resetToken() : "");
+
+        ingestionService.processAndQueue(
+                event.eventId().toString(),
+                "user.password-reset-requested",
+                event.correlationId(),
+                event.email(),
                 params,
                 event
         );

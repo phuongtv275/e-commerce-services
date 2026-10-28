@@ -11,6 +11,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -36,6 +37,11 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
     @Modifying
     @Transactional
     int deleteByUser(User user);
+
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM RefreshToken r WHERE (r.revoked = true OR r.expiresAt < :cutoff) AND r.expiresAt < :cutoff")
+    int deleteExpiredOrRevokedTokens(@Param("cutoff") Instant cutoff);
 
     // Backward compatibility aliases
     default Optional<RefreshToken> findByToken(String token) {
