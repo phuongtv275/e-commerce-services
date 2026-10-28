@@ -19,10 +19,24 @@ spring:
     redis:
       host: localhost
       port: 6379
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      acks: all
+      retries: 3
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    admin:
+      auto-create: false
+      fatal-if-broker-not-available: false
 
 eureka:
   client:
     enabled: false
+
+outbox:
+  publisher:
+    interval-ms: 60000
 
 app:
   jwt:

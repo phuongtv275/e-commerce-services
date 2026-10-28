@@ -5,7 +5,7 @@ plugins {
 }
 
 group = 'com.example'
-version = '0.1.17'
+version = '0.1.18'
 description = 'identity-service'
 
 java {
@@ -26,7 +26,10 @@ dependencies {
     // 1. Tích hợp Common Library (Core response, exceptions, outbox, filters, kafka, jjwt 0.12.6)
     implementation project(':common-library')
 
-    // 2. Spring Cloud & Hạ tầng Tập trung
+    // 2. Messaging: Spring Kafka Producer
+    implementation 'org.springframework.kafka:spring-kafka'
+
+    // 3. Spring Cloud & Hạ tầng Tập trung
     implementation 'org.springframework.cloud:spring-cloud-starter-config'
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
