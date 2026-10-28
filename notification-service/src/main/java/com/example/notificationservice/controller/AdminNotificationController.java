@@ -24,6 +24,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
+import java.util.regex.Pattern;
 
 @Slf4j
 @RestController
@@ -35,7 +36,13 @@ public class AdminNotificationController {
     private final NotificationLogRepository notificationLogRepository;
     private final DlqRedriveWorker dlqRedriveWorker;
 
-    private static final String REDACTED = "[REDACTED]";
+    private static final String REDACTED_TOKEN = "[REDACTED_TOKEN]";
+    private static final Pattern BODY_TOKEN_PATTERN = Pattern.compile(
+            "(?i)((?:token|resetToken)(?:=|%3D|\\s+|:\\s*))([a-zA-Z0-9_.-]+)"
+    );
+    private static final Pattern PAYLOAD_TOKEN_PATTERN = Pattern.compile(
+            "(?i)(\"(?:verificationToken|resetToken|token)\"\\s*:\\s*\")[^\"]*(\")"
+    );
 
     @GetMapping
     public ResponseEntity<ApiResponse<PagedResponse<NotificationSummaryResponse>>> getHistory(
@@ -176,9 +183,9 @@ public class AdminNotificationController {
                 .channel(log.getChannel())
                 .recipient(log.getRecipient())
                 .subject(log.getSubject())
-                .renderedBody(REDACTED)
-                .bodyPreview(REDACTED)
-                .payload(REDACTED)
+                .renderedBody(sanitizeBody(log.getRenderedBody()))
+                .bodyPreview(sanitizeBody(log.getBodyPreview()))
+                .payload(sanitizePayload(log.getPayload()))
                 .status(log.getStatus())
                 .retryCount(log.getRetryCount())
                 .errorMessage(log.getErrorMessage())
@@ -187,5 +194,19 @@ public class AdminNotificationController {
                 .sentAt(log.getSentAt())
                 .updatedAt(log.getUpdatedAt())
                 .build();
+    }
+
+    private String sanitizeBody(String content) {
+        if (content == null || content.isBlank()) {
+            return content;
+        }
+        return BODY_TOKEN_PATTERN.matcher(content).replaceAll("$1" + REDACTED_TOKEN);
+    }
+
+    private String sanitizePayload(String payload) {
+        if (payload == null || payload.isBlank()) {
+            return payload;
+        }
+        return PAYLOAD_TOKEN_PATTERN.matcher(payload).replaceAll("$1" + REDACTED_TOKEN + "$2");
     }
 }

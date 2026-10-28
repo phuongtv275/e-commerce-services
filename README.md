@@ -19,7 +19,7 @@ Backend Microservices platform for multi-channel e-commerce system built with Sp
 | **inventory-service** | Internal (`8083`) | v0.1.3: Stock ledger, reservations, expiry, oversell-safe stock updates, Batch Stock Availability (`POST /internal/inventory/stocks/batch`) | Spring Boot WebMVC, PostgreSQL (`inventory_db`), Hibernate DDL Auto, Kafka |
 | **order-service** | Internal (`8084`) | v0.1.2: Cart, Orders, Checkout, Outbox, Idempotency, Order Lifecycle State Machine (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`order_db`), Hibernate DDL Auto, Kafka |
 | **payment-service** | Internal (`8085`) | v0.1.2: Payment Transactions, Refunds (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`payment_db`), Hibernate DDL Auto |
-| **notification-service** | Internal (`8086`) | v0.1.4: Durable Kafka event ingestion, Vietnamese HTML email rendering, bounded JavaMailSender SMTP delivery, retry/DLQ auto-redrive, PII retention purge, Admin DLQ APIs (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`notification_db`), Spring Kafka, JavaMailSender, Hibernate DDL Auto & TemplateDataSeeder |
+| **notification-service** | Internal (`8086`) | v0.1.8: Durable Kafka event ingestion with explicit ConsumerFactory & @EnableKafka registration, standardized domain event topics, non-fatal missing topics startup, Gmail SMTP & JavaMailSender integration, Vietnamese HTML email rendering, bounded JavaMailSender SMTP delivery with graceful shutdown, retry/DLQ auto-redrive, PII retention purge with OOM-safe batching, Admin DLQ APIs with selective redaction, in-memory S2S client user cache, standalone local fallback (Isolated in private Docker network) | Spring Boot WebMVC, PostgreSQL (`notification_db`), Spring Kafka, JavaMailSender, Hibernate DDL Auto & TemplateDataSeeder |
 | **eureka-server** | `8761` | Service Registry & Discovery | Spring Cloud Netflix Eureka Server |
 | **config-server** | `8888` | Centralized Configuration Management | Spring Cloud Config Server (`native` profile) |
 | **PostgreSQL** | `5432` | Multi-Tenant Database | PostgreSQL 16 Alpine (6 independent databases) |
@@ -172,18 +172,18 @@ Order Service owns customer shopping carts, idempotent order checkout, order lif
 
 ---
 
-## 9. Notification Service Architecture (`notification-service` v0.1.4)
+## 9. Notification Service Architecture (`notification-service` v0.1.5)
 
 Notification Service manages durable transactional email notifications, template rendering, bounded SMTP delivery, automatic DLQ redrive, and PII retention lifecycle.
 
 ### Key Architectural Invariants
-- **Database & Persistence:** Dedicated PostgreSQL database (`notification_db`) with Hibernate DDL Auto (`spring.jpa.hibernate.ddl-auto: update`) and `NotificationTemplateDataSeeder` managing `notification_templates`, `notification_logs`, and `processed_events`.
+- **Database & Persistence:** Dedicated PostgreSQL database (`notification_db`) with Hibernate DDL Auto (`spring.jpa.hibernate.ddl-auto: update`) and `NotificationTemplateDataSeeder` managing `notification_templates` (6 default active templates), `notification_logs`, and `processed_events`. Includes complete standalone local fallback properties in `application.yaml`.
 - **Durable Kafka Ingestion & Deduplication:** Subscribes to 6 approved domain topics (`user.registered`, `order.status-changed`, `order.cancelled`, `payment.succeeded`, `payment.refund-completed`, `user.password-reset-requested`). Filters `order.status-changed` for `CONFIRMED` orders only. In a single local database transaction, saves `NotificationLog` in `QUEUED` state and records `processed_events` for consumer group `notification-service-group` before acknowledging offsets. Duplicates are safely acknowledged as no-ops.
-- **Zero-Trust Inter-Service Snapshots:** Calls `GET /internal/orders/{orderId}/notification-snapshot` (`ROLE_SERVICE_NOTIFICATION`) for order snapshot and item rows, and `GET /internal/users/{userId}` for recipient email/name. Secrets are configured externally via `${INTERNAL_SERVICE_KEYS_NOTIFICATION_SERVICE}` without hardcoded fallbacks.
-- **Template Rendering & Bounded SMTP Worker:** Vietnamese HTML templates render with escaped values and safe item rows. A bounded worker atomically claims `QUEUED`/`FAILED` jobs with a 10-minute lease and delivers through `JavaMailSender` outside database transactions, applying exponential backoff and transitioning to `DEAD_LETTER` after 3 attempts.
+- **Zero-Trust Inter-Service Snapshots & User Caching:** Calls `GET /internal/orders/{orderId}/notification-snapshot` (`ROLE_SERVICE_NOTIFICATION`) for order snapshot and item rows, and `GET /internal/users/{userId}` for recipient email/name with thread-safe in-memory caching (`Duration.ofMinutes(5)` TTL) to avoid redundant S2S lookups.
+- **Template Rendering & Bounded SMTP Worker:** Vietnamese HTML templates render with escaped values and safe item rows. A bounded worker atomically claims `QUEUED`/`FAILED` jobs with a 10-minute lease and delivers through `JavaMailSender` outside database transactions, applying exponential backoff and transitioning to `DEAD_LETTER` after 3 attempts. Equipped with `@PreDestroy` graceful shutdown hook (10s timeout).
 - **Auto-Redrive & DLQ Fencing:** Scheduled worker scans `DEAD_LETTER` jobs with a 5-minute cooldown (up to 10 total attempts), claims atomically with a unique claim token and 10-minute lease, fencing stale workers.
-- **PII Retention Purge:** Daily job (03:00 UTC) scrubs records older than 30 days (`[PURGED_PII]`, masked recipient `j***e@domain.com`, `[PURGED_PII_LOG]`), converts `QUEUED`/`REDRIVING` to `EXPIRED_UNSENT`, and preserves deduplication keys and audit history.
-- **Admin Management APIs:** `GET /api/v1/admin/notifications/dlq` (paginated, masked recipient), `GET /api/v1/admin/notifications/{id}` (full detail), and `POST /api/v1/admin/notifications/redrive-dlq` (rejects purged records with 422 `BUSINESS_RULE_VIOLATION`), strictly protected by `ROLE_ADMINISTRATOR`.
+- **PII Retention Purge:** Daily job (03:00 UTC) scrubs records older than 30 days (`[PURGED_PII]`, masked recipient `j***e@domain.com`, `[PURGED_PII_LOG]`), converts `QUEUED`/`REDRIVING` to `EXPIRED_UNSENT`, and flushes/clears Hibernate first-level cache per batch to prevent OutOfMemoryError.
+- **Admin Management APIs:** `GET /api/v1/admin/notifications/dlq` (paginated, masked recipient), `GET /api/v1/admin/notifications/{id}` (selective redaction preserving business payloads while redacting sensitive tokens), and `POST /api/v1/admin/notifications/redrive-dlq` (rejects purged records with 400/422 `BUSINESS_RULE_VIOLATION`), strictly protected by `ROLE_ADMINISTRATOR`.
 
 ## 10. Payment Service Architecture (`payment-service` v0.1.2)
 

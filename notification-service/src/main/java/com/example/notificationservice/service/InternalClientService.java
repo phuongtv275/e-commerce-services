@@ -13,11 +13,18 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 @Slf4j
 @Service
 public class InternalClientService {
+
+    private record CachedUser(InternalUserDto user, Instant expiryTime) {}
+    private final ConcurrentMap<UUID, CachedUser> userCache = new ConcurrentHashMap<>();
+    private static final Duration USER_CACHE_TTL = Duration.ofMinutes(5);
 
     private final RestTemplate restTemplate;
     private final String identityServiceUrl;
@@ -61,6 +68,11 @@ public class InternalClientService {
     }
 
     public InternalUserDto getUser(UUID userId) {
+        CachedUser cached = userCache.get(userId);
+        if (cached != null && cached.expiryTime().isAfter(Instant.now())) {
+            return cached.user();
+        }
+
         String url = identityServiceUrl + "/internal/users/" + userId;
         try {
             HttpEntity<Void> entity = new HttpEntity<>(buildHeaders(identityInternalKey));
@@ -71,7 +83,11 @@ public class InternalClientService {
                     new ParameterizedTypeReference<>() {}
             );
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                return response.getBody().getData();
+                InternalUserDto result = response.getBody().getData();
+                if (result != null) {
+                    userCache.put(userId, new CachedUser(result, Instant.now().plus(USER_CACHE_TTL)));
+                }
+                return result;
             }
             throw new RuntimeException("Failed to retrieve user: status " + response.getStatusCode());
         } catch (Exception e) {

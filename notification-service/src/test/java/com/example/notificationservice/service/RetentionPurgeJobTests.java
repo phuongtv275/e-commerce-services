@@ -3,6 +3,7 @@ package com.example.notificationservice.service;
 import com.example.notificationservice.domain.NotificationLog;
 import com.example.notificationservice.domain.NotificationStatus;
 import com.example.notificationservice.repository.NotificationLogRepository;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -27,11 +28,14 @@ class RetentionPurgeJobTests {
     @Mock
     private NotificationLogRepository notificationLogRepository;
 
+    @Mock
+    private EntityManager entityManager;
+
     private RetentionPurgeJob purgeJob;
 
     @BeforeEach
     void setUp() {
-        purgeJob = new RetentionPurgeJob(notificationLogRepository);
+        purgeJob = new RetentionPurgeJob(notificationLogRepository, entityManager);
         ReflectionTestUtils.setField(purgeJob, "retentionDays", 30L);
     }
 
@@ -73,6 +77,8 @@ class RetentionPurgeJobTests {
         assertEquals("s***r@example.com", saved.getRecipient());
         assertEquals(NotificationStatus.SENT, saved.getStatus());
         assertEquals("evt-old-1", saved.getEventId());
+        verify(notificationLogRepository).flush();
+        verify(entityManager).clear();
     }
 
     @Test
@@ -104,5 +110,21 @@ class RetentionPurgeJobTests {
         assertEquals(NotificationStatus.EXPIRED_UNSENT, saved.getStatus());
         assertEquals("[PURGED_PII]", saved.getSubject());
         assertEquals("o***d@example.com", saved.getRecipient());
+        verify(notificationLogRepository).flush();
+        verify(entityManager).clear();
+    }
+
+    @Test
+    @DisplayName("Positive: When no candidates match, return 0 purged and no flush/clear invoked")
+    void testPurgeOldRecords_NoCandidates() {
+        when(notificationLogRepository.findRetentionPurgeCandidates(any(), any()))
+                .thenReturn(Collections.emptyList());
+
+        int purged = purgeJob.purgeOldRecords();
+
+        assertEquals(0, purged);
+        verify(notificationLogRepository, never()).save(any());
+        verify(notificationLogRepository, never()).flush();
+        verify(entityManager, never()).clear();
     }
 }

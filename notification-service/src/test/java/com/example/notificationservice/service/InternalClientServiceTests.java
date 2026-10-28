@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.client.ExpectedCount.times;
 
 class InternalClientServiceTests {
 
@@ -77,6 +78,34 @@ class InternalClientServiceTests {
         assertNotNull(result);
         assertEquals(userId, result.getId());
         assertEquals("test@example.com", result.getEmail());
+        mockServer.verify();
+    }
+
+    @Test
+    @DisplayName("Positive: Second call to getUser retrieves from cache without calling upstream service")
+    void testGetUser_CachedOnSubsequentCall() throws Exception {
+        UUID userId = UUID.randomUUID();
+        InternalUserDto userDto = InternalUserDto.builder()
+                .id(userId)
+                .email("cached.user@example.com")
+                .fullName("Trần Thị B")
+                .build();
+        ApiResponse<InternalUserDto> apiResponse = ApiResponse.success(userDto);
+
+        mockServer.expect(times(1), MockRestRequestMatchers.requestTo("http://identity-service:8081/internal/users/" + userId))
+                .andExpect(MockRestRequestMatchers.method(HttpMethod.GET))
+                .andExpect(MockRestRequestMatchers.header(SecurityConstants.HEADER_CALLING_SERVICE, "notification-service"))
+                .andExpect(MockRestRequestMatchers.header(SecurityConstants.HEADER_INTERNAL_SERVICE_KEY, "identity-secret-key"))
+                .andRespond(MockRestResponseCreators.withSuccess(objectMapper.writeValueAsString(apiResponse), MediaType.APPLICATION_JSON));
+
+        InternalUserDto firstCall = internalClientService.getUser(userId);
+        InternalUserDto secondCall = internalClientService.getUser(userId);
+
+        assertNotNull(firstCall);
+        assertNotNull(secondCall);
+        assertSame(firstCall, secondCall);
+        assertEquals(userId, secondCall.getId());
+        assertEquals("cached.user@example.com", secondCall.getEmail());
         mockServer.verify();
     }
 

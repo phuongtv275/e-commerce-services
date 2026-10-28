@@ -186,9 +186,41 @@ class AdminNotificationControllerTests {
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.recipient").value("admin.view@example.com"))
                 .andExpect(jsonPath("$.data.subject").value("Biên nhận thanh toán"))
-                .andExpect(jsonPath("$.data.renderedBody").value("[REDACTED]"))
-                .andExpect(jsonPath("$.data.bodyPreview").value("[REDACTED]"))
-                .andExpect(jsonPath("$.data.payload").value("[REDACTED]"));
+                .andExpect(jsonPath("$.data.renderedBody").value("<p>Verify at https://example.com/verify?token=[REDACTED_TOKEN]</p>"))
+                .andExpect(jsonPath("$.data.bodyPreview").value("Verify using token [REDACTED_TOKEN]"))
+                .andExpect(jsonPath("$.data.payload").value("{\"eventId\":\"evt-detail-1\",\"verificationToken\":\"[REDACTED_TOKEN]\"}"));
+    }
+
+    @Test
+    @DisplayName("Positive: GET /api/v1/admin/notifications/{id} retains full content when no sensitive token is present")
+    @WithMockUser(authorities = {"ROLE_ADMINISTRATOR"})
+    void testGetDetail_NonSensitiveNotificationRetained() throws Exception {
+        UUID id = UUID.randomUUID();
+        NotificationLog logEntry = NotificationLog.builder()
+                .id(id)
+                .eventId("evt-order-1")
+                .eventType("order.status-changed")
+                .channel(NotificationChannel.EMAIL)
+                .recipient("buyer@example.com")
+                .subject("Order #123 Confirmed")
+                .renderedBody("<p>Your order #123 of 500,000 VND has been confirmed.</p>")
+                .bodyPreview("Your order #123 of 500,000 VND has been confirmed.")
+                .payload("{\"orderId\":\"123\",\"total\":500000}")
+                .status(NotificationStatus.SENT)
+                .queuedAt(Instant.now())
+                .updatedAt(Instant.now())
+                .build();
+
+        when(notificationLogRepository.findById(id)).thenReturn(Optional.of(logEntry));
+
+        mockMvc.perform(get("/api/v1/admin/notifications/{id}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.recipient").value("buyer@example.com"))
+                .andExpect(jsonPath("$.data.subject").value("Order #123 Confirmed"))
+                .andExpect(jsonPath("$.data.renderedBody").value("<p>Your order #123 of 500,000 VND has been confirmed.</p>"))
+                .andExpect(jsonPath("$.data.bodyPreview").value("Your order #123 of 500,000 VND has been confirmed."))
+                .andExpect(jsonPath("$.data.payload").value("{\"orderId\":\"123\",\"total\":500000}"));
     }
 
     @Test

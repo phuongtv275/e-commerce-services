@@ -3,6 +3,7 @@ package com.example.notificationservice.service;
 import com.example.notificationservice.domain.NotificationLog;
 import com.example.notificationservice.domain.NotificationStatus;
 import com.example.notificationservice.repository.NotificationLogRepository;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,6 +22,7 @@ import java.util.List;
 public class RetentionPurgeJob {
 
     private final NotificationLogRepository notificationLogRepository;
+    private final EntityManager entityManager;
 
     @Value("${notification.retention.days:30}")
     private long retentionDays;
@@ -68,6 +70,9 @@ public class RetentionPurgeJob {
                 notificationLogRepository.save(logEntry);
                 totalPurged++;
             }
+
+            notificationLogRepository.flush();
+            entityManager.clear();
         }
 
         return totalPurged;

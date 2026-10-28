@@ -4,6 +4,7 @@ import com.example.notificationservice.domain.NotificationLog;
 import com.example.notificationservice.domain.NotificationStatus;
 import com.example.notificationservice.metrics.NotificationMetrics;
 import com.example.notificationservice.repository.NotificationLogRepository;
+import jakarta.annotation.PreDestroy;
 import jakarta.mail.internet.MimeMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -59,6 +60,20 @@ public class MailDeliveryWorker {
                 new LinkedBlockingQueue<>(100),
                 new ThreadPoolExecutor.CallerRunsPolicy()
         );
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        log.info("Shutting down MailDeliveryWorker executor pool...");
+        workerPool.shutdown();
+        try {
+            if (!workerPool.awaitTermination(10, TimeUnit.SECONDS)) {
+                workerPool.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            workerPool.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
     }
 
     @Scheduled(fixedDelayString = "${notification.worker.poll-interval-ms:5000}")

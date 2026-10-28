@@ -6,3 +6,104 @@ spring:
     name: notification-service
   config:
     import: "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:${DATASOURCE_URL:jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/notification_db}}
+    username: ${SPRING_DATASOURCE_USERNAME:${DATASOURCE_USERNAME:${POSTGRES_USER:postgres}}}
+    password: ${SPRING_DATASOURCE_PASSWORD:${DATASOURCE_PASSWORD:${POSTGRES_PASSWORD:postgres}}}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: ${NOTIFICATION_KAFKA_CONSUMER_GROUP:notification-service-group}
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      ack-mode: MANUAL_IMMEDIATE
+
+  mail:
+    host: ${MAIL_HOST:${SPRING_MAIL_HOST:smtp.gmail.com}}
+    port: ${MAIL_PORT:${SPRING_MAIL_PORT:587}}
+    username: ${MAIL_USERNAME:${SPRING_MAIL_USERNAME:}}
+    password: ${MAIL_PASSWORD:${SPRING_MAIL_PASSWORD:}}
+    default-encoding: ${MAIL_DEFAULT_ENCODING:UTF-8}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:true}
+          starttls:
+            enable: ${MAIL_SMTP_STARTTLS_ENABLE:true}
+            required: ${MAIL_SMTP_STARTTLS_REQUIRED:true}
+          connectiontimeout: ${MAIL_SMTP_CONNECTION_TIMEOUT_MS:10000}
+          timeout: ${MAIL_SMTP_READ_TIMEOUT_MS:10000}
+          writetimeout: ${MAIL_SMTP_WRITE_TIMEOUT_MS:10000}
+
+management:
+  health:
+    mail:
+      enabled: false
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+services:
+  identity-service:
+    base-url: ${IDENTITY_SERVICE_URL:http://localhost:8081}
+    internal-key: "${INTERNAL_SERVICE_KEYS_NOTIFICATION_SERVICE:${INTERNAL_KEY_NOTIFICATION:9872c97a97c4a59def15e508794d867b8c7a24bbc170588ec154c65c878953ff}}"
+    connect-timeout-ms: ${IDENTITY_CONNECT_TIMEOUT_MS:3000}
+    read-timeout-ms: ${IDENTITY_READ_TIMEOUT_MS:5000}
+  order-service:
+    base-url: ${ORDER_SERVICE_URL:http://localhost:8084}
+    internal-key: "${INTERNAL_SERVICE_KEYS_NOTIFICATION_SERVICE:${INTERNAL_KEY_NOTIFICATION:9872c97a97c4a59def15e508794d867b8c7a24bbc170588ec154c65c878953ff}}"
+    connect-timeout-ms: ${ORDER_CONNECT_TIMEOUT_MS:3000}
+    read-timeout-ms: ${ORDER_READ_TIMEOUT_MS:5000}
+
+notification:
+  mail:
+    from: ${MAIL_FROM:truongvanphuong.gv2003@gmail.com}
+  verification:
+    base-url: "${USER_VERIFICATION_BASE_URL:http://localhost:8080/api/v1/auth/verify?token=}"
+  kafka:
+    consumer-group: ${NOTIFICATION_KAFKA_CONSUMER_GROUP:notification-service-group}
+    topics:
+      user-registered: ${KAFKA_TOPIC_USER_REGISTERED:user.registered}
+      order-status-changed: ${KAFKA_TOPIC_ORDER_STATUS_CHANGED:order.status-changed}
+      order-cancelled: ${KAFKA_TOPIC_ORDER_CANCELLED:order.cancelled}
+      payment-succeeded: ${KAFKA_TOPIC_PAYMENT_SUCCEEDED:payment.succeeded}
+      payment-refund-completed: ${KAFKA_TOPIC_PAYMENT_REFUND_COMPLETED:payment.refund-completed}
+      user-password-reset-requested: ${KAFKA_TOPIC_USER_PASSWORD_RESET_REQUESTED:user.password-reset-requested}
+    consumer:
+      max-attempts: ${NOTIFICATION_KAFKA_MAX_ATTEMPTS:3}
+      initial-backoff-ms: ${NOTIFICATION_KAFKA_INITIAL_BACKOFF_MS:1000}
+      max-backoff-ms: ${NOTIFICATION_KAFKA_MAX_BACKOFF_MS:4000}
+      dlt-suffix: ${NOTIFICATION_KAFKA_DLT_SUFFIX:.dlt}
+  worker:
+    concurrency: ${NOTIFICATION_WORKER_CONCURRENCY:5}
+    claim-lease-minutes: ${NOTIFICATION_CLAIM_LEASE_MINUTES:10}
+    initial-backoff-ms: ${NOTIFICATION_RETRY_INITIAL_BACKOFF_MS:1000}
+    max-attempts: ${NOTIFICATION_RETRY_MAX_ATTEMPTS:3}
+  redrive:
+    cron: "${NOTIFICATION_REDRIVE_CRON:0 */15 * * * *}"
+    cooldown-minutes: ${NOTIFICATION_REDRIVE_COOLDOWN_MINUTES:5}
+    batch-size: ${NOTIFICATION_REDRIVE_BATCH_SIZE:50}
+    max-total-attempts: ${NOTIFICATION_REDRIVE_MAX_TOTAL_ATTEMPTS:10}
+  retention:
+    days: ${NOTIFICATION_RETENTION_DAYS:30}
+    purge-cron: "${NOTIFICATION_RETENTION_PURGE_CRON:0 0 3 * * *}"
+    zone: "${NOTIFICATION_RETENTION_ZONE:UTC}"
