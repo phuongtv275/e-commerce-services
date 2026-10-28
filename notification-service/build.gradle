@@ -5,7 +5,7 @@ plugins {
 }
 
 group = 'com.example'
-version = '0.1.5'
+version = '0.1.6'
 description = 'notification-service'
 
 java {
@@ -40,7 +40,7 @@ dependencies {
     runtimeOnly 'org.postgresql:postgresql'
 
     // 4. Kafka, Mail & Security
-    implementation 'org.springframework.kafka:spring-kafka'
+    implementation 'org.springframework.boot:spring-boot-starter-kafka'
     implementation 'org.springframework.boot:spring-boot-starter-mail'
     implementation 'org.springframework.boot:spring-boot-starter-security'
 

@@ -34,12 +34,12 @@ public class NotificationKafkaConsumer {
 
     @KafkaListener(
             topics = {
-                    "#{'${notification.kafka.topics.user-registered:user.registered}'}",
-                    "#{'${notification.kafka.topics.order-status-changed:order.status-changed}'}",
-                    "#{'${notification.kafka.topics.order-cancelled:order.cancelled}'}",
-                    "#{'${notification.kafka.topics.payment-succeeded:payment.succeeded}'}",
-                    "#{'${notification.kafka.topics.payment-refund-completed:payment.refund-completed}'}",
-                    "#{'${notification.kafka.topics.user-password-reset-requested:user.password-reset-requested}'}"
+                    "${notification.kafka.topics.user-registered:user.registered}",
+                    "${notification.kafka.topics.order-status-changed:order.status-changed}",
+                    "${notification.kafka.topics.order-cancelled:order.cancelled}",
+                    "${notification.kafka.topics.payment-succeeded:payment.succeeded}",
+                    "${notification.kafka.topics.payment-refund-completed:payment.refund-completed}",
+                    "${notification.kafka.topics.user-password-reset-requested:user.password-reset-requested}"
             },
             groupId = "${notification.kafka.consumer-group:${spring.kafka.consumer.group-id:notification-service-group}}",
             containerFactory = "kafkaListenerContainerFactory"
