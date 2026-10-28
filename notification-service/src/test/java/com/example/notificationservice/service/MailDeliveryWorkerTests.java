@@ -20,6 +20,9 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -167,5 +170,14 @@ class MailDeliveryWorkerTests {
 
         verify(mailSender, never()).send(any(MimeMessage.class));
         verify(notificationLogRepository, never()).updateExecutionResult(any(), any(), any(), any(), any(), anyInt(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("Positive: Graceful shutdown terminates workerPool safely")
+    void testShutdown_TerminatesSafely() {
+        assertDoesNotThrow(() -> worker.shutdown());
+        ExecutorService pool = (ExecutorService) ReflectionTestUtils.getField(worker, "workerPool");
+        assertNotNull(pool);
+        assertTrue(pool.isShutdown());
     }
 }
