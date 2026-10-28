@@ -108,6 +108,10 @@ public class BrandService {
             if (products.size() < pageSize) {
                 break;
             }
+            if (page == maxBatches - 1 && products.size() == pageSize) {
+                log.warn("Fan-out cascade event threshold reached (maxBatches={}, {} products emitted) for brandId: {}. There are remaining products not emitted. Please run a Reindex Job (POST /api/v1/catalog/admin/reindex) to synchronize search index.",
+                        maxBatches, maxBatches * pageSize, brandId);
+            }
         }
     }
 

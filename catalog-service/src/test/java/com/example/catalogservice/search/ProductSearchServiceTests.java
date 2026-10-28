@@ -781,4 +781,121 @@ class ProductSearchServiceTests {
         verify(elasticsearchOperations).count(countQueryCaptor.capture(), eq(ProductSkuDocument.class), any(IndexCoordinates.class));
         assertThat(countQueryCaptor.getValue()).isNotNull();
     }
+
+    @Test
+    @DisplayName("Positive: Dynamic index alias is used when configured")
+    @SuppressWarnings("unchecked")
+    void testSearch_DynamicAliasNameUsed() {
+        searchService.setDefaultAliasName("custom_catalog_alias");
+        SearchProductRequest req = SearchProductRequest.builder()
+                .q("phone")
+                .mode("offset")
+                .page(0)
+                .size(10)
+                .build();
+
+        SearchHits<ProductSkuDocument> mockSearchHits = mock(SearchHits.class);
+        when(mockSearchHits.getSearchHits()).thenReturn(List.of());
+        when(mockSearchHits.getTotalHits()).thenReturn(0L);
+        when(elasticsearchOperations.search(any(Query.class), eq(ProductSkuDocument.class), eq(IndexCoordinates.of("custom_catalog_alias"))))
+                .thenReturn(mockSearchHits);
+
+        SearchProductResponse resp = searchService.search(req);
+        assertThat(resp).isNotNull();
+        verify(elasticsearchOperations).search(any(Query.class), eq(ProductSkuDocument.class), eq(IndexCoordinates.of("custom_catalog_alias")));
+    }
+
+    @Test
+    @DisplayName("Positive: PIT resource leak is prevented when search throws exception")
+    @SuppressWarnings("unchecked")
+    void testSearch_PitClosedOnException_PreventsLeak() {
+        SearchProductRequest req = SearchProductRequest.builder()
+                .mode("cursor")
+                .size(10)
+                .build();
+
+        when(elasticsearchOperations.openPointInTime(any(IndexCoordinates.class), any(Duration.class)))
+                .thenReturn("pit-leak-test-999");
+        when(elasticsearchOperations.search(any(Query.class), eq(ProductSkuDocument.class), any(IndexCoordinates.class)))
+                .thenThrow(new RuntimeException("ES unexpected error"));
+
+        // When mode=cursor, fallback fails with UPSTREAM_UNAVAILABLE
+        assertThatThrownBy(() -> searchService.search(req))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> {
+                    BusinessException be = (BusinessException) ex;
+                    assertThat(be.getErrorCode()).isEqualTo(ErrorCode.UPSTREAM_UNAVAILABLE);
+                });
+
+        // Verify PIT was closed in finally block despite exception
+        verify(elasticsearchOperations).closePointInTime("pit-leak-test-999");
+    }
+
+    @Test
+    @DisplayName("Positive: Postgres fallback uses batch fetching for SKUs and Images")
+    void testSearchPostgresFallback_BatchFetchesSkusAndImages() {
+        when(elasticsearchOperations.search(any(Query.class), eq(ProductSkuDocument.class), any(IndexCoordinates.class)))
+                .thenThrow(new RuntimeException("Elasticsearch unavailable"));
+
+        UUID catId = UUID.randomUUID();
+        UUID bId = UUID.randomUUID();
+        UUID prodId = UUID.randomUUID();
+
+        when(categoryRepository.findByStatusOrderByDisplayOrderAscNameAscIdAsc(CategoryStatus.ACTIVE))
+                .thenReturn(List.of(Category.builder().id(catId).name("Electronics").status(CategoryStatus.ACTIVE).build()));
+        when(brandRepository.findByStatusOrderByNameAsc(BrandStatus.ACTIVE))
+                .thenReturn(List.of(Brand.builder().id(bId).name("Apple").status(BrandStatus.ACTIVE).build()));
+
+        Product product = Product.builder()
+                .id(prodId)
+                .name("iPhone 16 Pro")
+                .categoryId(catId)
+                .brandId(bId)
+                .status(ProductStatus.ACTIVE)
+                .build();
+        when(productRepository.findByStatusAndDeletedAtIsNull(ProductStatus.ACTIVE))
+                .thenReturn(List.of(product));
+
+        Sku sku = Sku.builder()
+                .id(UUID.randomUUID())
+                .productId(prodId)
+                .skuCode("IP16P-128")
+                .name("iPhone 16 Pro 128GB")
+                .price(new BigDecimal("25000000"))
+                .currency("VND")
+                .status(SkuStatus.ACTIVE)
+                .updatedAt(Instant.now())
+                .build();
+        when(skuRepository.findByProductIdInAndStatusAndDeletedAtIsNull(List.of(prodId), SkuStatus.ACTIVE))
+                .thenReturn(List.of(sku));
+
+        ProductImage image = ProductImage.builder()
+                .id(UUID.randomUUID())
+                .productId(prodId)
+                .skuId(sku.getId())
+                .url("https://example.com/ip16.png")
+                .primary(true)
+                .displayOrder(1)
+                .createdAt(Instant.now())
+                .build();
+        when(productImageRepository.findByProductIdInOrderByDisplayOrderAscCreatedAtAsc(Set.of(prodId)))
+                .thenReturn(List.of(image));
+
+        SearchProductRequest req = SearchProductRequest.builder()
+                .q("iPhone")
+                .mode("offset")
+                .page(0)
+                .size(10)
+                .build();
+
+        SearchProductResponse resp = searchService.search(req);
+        assertThat(resp).isNotNull();
+        assertThat(resp.getItems()).hasSize(1);
+        assertThat(resp.getItems().get(0).getSkuCode()).isEqualTo("IP16P-128");
+        assertThat(resp.getItems().get(0).getImages()).hasSize(1);
+        assertThat(resp.getItems().get(0).getImages().get(0).getImageUrl()).isEqualTo("https://example.com/ip16.png");
+
+        verify(skuRepository).findByProductIdInAndStatusAndDeletedAtIsNull(List.of(prodId), SkuStatus.ACTIVE);
+        verify(productImageRepository).findByProductIdInOrderByDisplayOrderAscCreatedAtAsc(Set.of(prodId));
+    }
 }

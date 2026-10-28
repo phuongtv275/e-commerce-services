@@ -21,7 +21,7 @@ public class OutboxReplayController {
 
     private final OutboxEventRepository outboxEventRepository;
 
-    @PostMapping({"/api/v1/admin/outbox/replay/{id}", "/internal/outbox/replay/{id}"})
+    @PostMapping({"/api/v1/admin/outbox/replay/{id}", "/internal/outbox/replay/{id}", "/api/v1/admin/catalog/outbox/replay/{id}"})
     @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SERVICE_ADMIN')")
     public ResponseEntity<ApiResponse<OutboxEvent>> replayOutboxEvent(@PathVariable UUID id) {
         OutboxEvent event = outboxEventRepository.findById(id)

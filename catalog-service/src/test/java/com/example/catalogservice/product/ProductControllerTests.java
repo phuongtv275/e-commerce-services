@@ -145,4 +145,52 @@ class ProductControllerTests {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value(ErrorCode.RESOURCE_NOT_FOUND.name()));
     }
+
+    @Test
+    @DisplayName("Positive: GET /api/v1/catalog/admin/products with page & size returns 200")
+    void testGetAllAdminProducts_WithPagination_Success() throws Exception {
+        ProductResponse product = ProductResponse.builder()
+                .id(UUID.randomUUID())
+                .name("Admin Product 1")
+                .status(ProductStatus.ACTIVE)
+                .build();
+
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(1, 5);
+        when(productService.getAllProducts(pageable)).thenReturn(List.of(product));
+
+        mockMvc.perform(get("/api/v1/catalog/admin/products?page=1&size=5")
+                        .with(user("staff-user").roles("CATALOG_STAFF")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data[0].name").value("Admin Product 1"));
+    }
+
+    @Test
+    @DisplayName("Positive: GET /api/v1/catalog/admin/products with default params returns 200")
+    void testGetAllAdminProducts_DefaultPagination_Success() throws Exception {
+        org.springframework.data.domain.Pageable defaultPageable = org.springframework.data.domain.PageRequest.of(0, 20);
+        when(productService.getAllProducts(defaultPageable)).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/v1/catalog/admin/products")
+                        .with(user("admin-user").roles("ADMINISTRATOR")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"));
+    }
+
+    @Test
+    @DisplayName("Negative: GET /api/v1/catalog/admin/products without auth returns 401")
+    void testGetAllAdminProducts_Unauthenticated() throws Exception {
+        mockMvc.perform(get("/api/v1/catalog/admin/products"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(ErrorCode.AUTHENTICATION_REQUIRED.name()));
+    }
+
+    @Test
+    @DisplayName("Negative: GET /api/v1/catalog/admin/products with ROLE_CUSTOMER returns 403")
+    void testGetAllAdminProducts_CustomerForbidden() throws Exception {
+        mockMvc.perform(get("/api/v1/catalog/admin/products")
+                        .with(user("customer-user").roles("CUSTOMER")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(ErrorCode.ACCESS_DENIED.name()));
+    }
 }

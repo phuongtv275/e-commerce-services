@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -15,6 +16,8 @@ import java.util.UUID;
 public interface ProductImageRepository extends JpaRepository<ProductImage, UUID> {
 
     List<ProductImage> findByProductIdOrderByDisplayOrderAscCreatedAtAsc(UUID productId);
+
+    List<ProductImage> findByProductIdInOrderByDisplayOrderAscCreatedAtAsc(Collection<UUID> productIds);
 
     Optional<ProductImage> findByProductIdAndPrimaryTrue(UUID productId);
 
