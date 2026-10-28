@@ -320,4 +320,53 @@ class ProductServiceTests {
         assertThatThrownBy(() -> productService.getPublicProductDetail(product.getId()))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
+
+    @Test
+    @DisplayName("Positive: getAllProducts with Pageable batches categories, brands, skus and images")
+    void testGetAllProducts_WithPaginationAndBatchFetching() {
+        CreateProductRequest req1 = CreateProductRequest.builder()
+                .name("Product 1")
+                .categoryId(activeCategory.getId())
+                .brandId(activeBrand.getId())
+                .build();
+        ProductResponse p1 = productService.createProduct(req1, "admin-1");
+        skuService.createSku(p1.getId(), CreateSkuRequest.builder()
+                .skuCode("SKU-BATCH-1")
+                .name("SKU 1")
+                .price(new BigDecimal("100000"))
+                .build(), "admin-1");
+
+        CreateProductRequest req2 = CreateProductRequest.builder()
+                .name("Product 2")
+                .categoryId(activeCategory.getId())
+                .brandId(activeBrand.getId())
+                .build();
+        ProductResponse p2 = productService.createProduct(req2, "admin-1");
+        skuService.createSku(p2.getId(), CreateSkuRequest.builder()
+                .skuCode("SKU-BATCH-2")
+                .name("SKU 2")
+                .price(new BigDecimal("200000"))
+                .build(), "admin-1");
+
+        CreateProductRequest req3 = CreateProductRequest.builder()
+                .name("Product 3")
+                .categoryId(activeCategory.getId())
+                .brandId(activeBrand.getId())
+                .build();
+        productService.createProduct(req3, "admin-1");
+
+        // Request page 0, size 2
+        List<ProductResponse> page0 = productService.getAllProducts(org.springframework.data.domain.PageRequest.of(0, 2));
+        assertThat(page0).hasSize(2);
+        assertThat(page0.get(0).getCategoryName()).isEqualTo("Computers");
+        assertThat(page0.get(0).getBrandName()).isEqualTo("Dell");
+
+        // Request page 1, size 2
+        List<ProductResponse> page1 = productService.getAllProducts(org.springframework.data.domain.PageRequest.of(1, 2));
+        assertThat(page1).hasSize(1);
+
+        // Test overload getAllProducts()
+        List<ProductResponse> defaultAll = productService.getAllProducts();
+        assertThat(defaultAll).hasSize(3);
+    }
 }

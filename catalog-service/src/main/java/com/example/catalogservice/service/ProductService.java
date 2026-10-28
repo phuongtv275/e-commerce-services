@@ -13,12 +13,13 @@ import com.example.catalogservice.entity.*;
 import com.example.catalogservice.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -214,10 +215,60 @@ public class ProductService {
     }
 
     @Transactional(readOnly = true)
+    public List<ProductResponse> getAllProducts(Pageable pageable) {
+        Pageable effectivePageable = pageable != null ? pageable : PageRequest.of(0, 20);
+        List<Product> products = productRepository.findAllByDeletedAtIsNullOrderByCreatedAtDesc(effectivePageable);
+        if (products.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<UUID> productIds = products.stream().map(Product::getId).collect(Collectors.toList());
+        Set<UUID> categoryIds = products.stream().map(Product::getCategoryId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Set<UUID> brandIds = products.stream().map(Product::getBrandId).filter(Objects::nonNull).collect(Collectors.toSet());
+
+        // Batch fetch categories in 1 query
+        Map<UUID, String> categoryNames = categoryIds.isEmpty() ? Collections.emptyMap() :
+                categoryRepository.findAllById(categoryIds).stream()
+                        .collect(Collectors.toMap(Category::getId, Category::getName));
+
+        // Batch fetch brands in 1 query
+        Map<UUID, String> brandNames = brandIds.isEmpty() ? Collections.emptyMap() :
+                brandRepository.findAllById(brandIds).stream()
+                        .collect(Collectors.toMap(Brand::getId, Brand::getName));
+
+        // Batch fetch SKUs in 1 query
+        List<Sku> skus = skuRepository.findByProductIdInAndDeletedAtIsNull(productIds);
+        Map<UUID, List<SkuResponse>> skusByProductId = skus.stream()
+                .map(this::toSkuResponse)
+                .collect(Collectors.groupingBy(SkuResponse::getProductId, LinkedHashMap::new, Collectors.toList()));
+
+        // Batch fetch Images in 1 query
+        List<ProductImage> images = productImageRepository.findByProductIdInOrderByDisplayOrderAscCreatedAtAsc(productIds);
+        Map<UUID, List<ProductImageResponse>> imagesByProductId = images.stream()
+                .map(this::toImageResponse)
+                .collect(Collectors.groupingBy(ProductImageResponse::getProductId, LinkedHashMap::new, Collectors.toList()));
+
+        return products.stream().map(p -> ProductResponse.builder()
+                .id(p.getId())
+                .name(p.getName())
+                .description(p.getDescription())
+                .metadata(p.getMetadata() != null ? p.getMetadata().toString() : "{}")
+                .categoryId(p.getCategoryId())
+                .categoryName(categoryNames.getOrDefault(p.getCategoryId(), "Unknown"))
+                .brandId(p.getBrandId())
+                .brandName(brandNames.getOrDefault(p.getBrandId(), "Unknown"))
+                .status(p.getStatus())
+                .skus(skusByProductId.getOrDefault(p.getId(), Collections.emptyList()))
+                .images(imagesByProductId.getOrDefault(p.getId(), Collections.emptyList()))
+                .createdAt(p.getCreatedAt())
+                .updatedAt(p.getUpdatedAt())
+                .build()
+        ).collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
     public List<ProductResponse> getAllProducts() {
-        return productRepository.findAllByDeletedAtIsNullOrderByCreatedAtDesc().stream()
-                .map(this::toResponse)
-                .collect(Collectors.toList());
+        return getAllProducts(PageRequest.of(0, 20));
     }
 
     public ProductResponse toResponse(Product product) {

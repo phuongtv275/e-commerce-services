@@ -32,6 +32,10 @@ public interface SkuRepository extends JpaRepository<Sku, UUID> {
 
     List<Sku> findByIdInAndDeletedAtIsNull(Collection<UUID> ids);
 
+    List<Sku> findByProductIdInAndDeletedAtIsNull(Collection<UUID> productIds);
+
+    List<Sku> findByProductIdInAndStatusAndDeletedAtIsNull(Collection<UUID> productIds, SkuStatus status);
+
     long countByStatusAndDeletedAtIsNull(SkuStatus status);
 
     @Query("SELECT DISTINCT s.productId FROM Sku s WHERE s.updatedAt >= :since")

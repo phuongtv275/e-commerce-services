@@ -9,6 +9,8 @@ import com.example.catalogservice.entity.ProductStatus;
 import com.example.catalogservice.service.ProductService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -37,8 +39,11 @@ public class ProductController {
 
     @GetMapping("/admin/products")
     @PreAuthorize("hasAnyRole('CATALOG_STAFF', 'ADMINISTRATOR')")
-    public ResponseEntity<ApiResponse<List<ProductResponse>>> getAllAdminProducts() {
-        List<ProductResponse> products = productService.getAllProducts();
+    public ResponseEntity<ApiResponse<List<ProductResponse>>> getAllAdminProducts(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, size));
+        List<ProductResponse> products = productService.getAllProducts(pageable);
         return ResponseEntity.ok(ApiResponse.success(products));
     }
 

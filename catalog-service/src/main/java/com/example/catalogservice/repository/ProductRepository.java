@@ -36,6 +36,8 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
 
     List<Product> findAllByDeletedAtIsNullOrderByCreatedAtDesc();
 
+    List<Product> findAllByDeletedAtIsNullOrderByCreatedAtDesc(Pageable pageable);
+
     List<Product> findByStatusAndDeletedAtIsNull(ProductStatus status);
 
     List<Product> findByDeletedAtIsNullOrderByIdAsc(Pageable pageable);

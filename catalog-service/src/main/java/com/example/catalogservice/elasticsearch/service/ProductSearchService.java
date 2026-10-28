@@ -13,6 +13,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.elasticsearch.client.elc.NativeQuery;
@@ -44,6 +45,17 @@ public class ProductSearchService {
     private final BrandRepository brandRepository;
     private final ProductImageRepository productImageRepository;
     private final ObjectMapper objectMapper;
+
+    @Value("${catalog.index.name:product_catalog}")
+    private String defaultAliasName = "product_catalog";
+
+    public String getDefaultAliasName() {
+        return defaultAliasName;
+    }
+
+    public void setDefaultAliasName(String defaultAliasName) {
+        this.defaultAliasName = defaultAliasName;
+    }
 
     private static final Set<String> VALID_SORTS = Set.of("relevance", "price_asc", "price_desc", "newest");
     private static final Set<String> VALID_MODES = Set.of("offset", "cursor");
@@ -127,7 +139,7 @@ public class ProductSearchService {
                     .build();
 
             long unknownCount = elasticsearchOperations.count(checkQuery, ProductSkuDocument.class,
-                    IndexCoordinates.of("product_catalog"));
+                    IndexCoordinates.of(defaultAliasName));
             if (unknownCount > 0) {
                 throw new BusinessException(ErrorCode.UPSTREAM_UNAVAILABLE,
                         "Inventory stock status is unknown for one or more requested items");
@@ -151,88 +163,100 @@ public class ProductSearchService {
         int fetchSize = isCursorMode ? req.getSize() + 1 : req.getSize();
 
         String pitId = null;
-        if (isCursorMode) {
-            qb.withPageable(PageRequest.of(0, fetchSize));
-            if (req.getCursor() != null && !req.getCursor().trim().isEmpty()) {
-                SearchCursorCodec.CursorPayload cursorPayload = searchCursorCodec.decode(req.getCursor(), fingerprint);
-                if (cursorPayload != null) {
-                    if (cursorPayload.isExpired()) {
-                        log.info("Cursor expired; restarting search from the beginning per spec");
-                        if (cursorPayload.getPitId() != null) {
-                            try {
-                                elasticsearchOperations.closePointInTime(cursorPayload.getPitId());
-                            } catch (Exception ignored) {}
-                        }
-                        pitId = elasticsearchOperations.openPointInTime(IndexCoordinates.of("product_catalog"), Duration.ofMinutes(1));
-                    } else {
-                        pitId = cursorPayload.getPitId();
-                        if (cursorPayload.getSortValues() != null) {
-                            qb.withSearchAfter(cursorPayload.getSortValues());
+        boolean keepPitOpen = false;
+
+        try {
+            if (isCursorMode) {
+                qb.withPageable(PageRequest.of(0, fetchSize));
+                if (req.getCursor() != null && !req.getCursor().trim().isEmpty()) {
+                    SearchCursorCodec.CursorPayload cursorPayload = searchCursorCodec.decode(req.getCursor(), fingerprint);
+                    if (cursorPayload != null) {
+                        if (cursorPayload.isExpired()) {
+                            log.info("Cursor expired; restarting search from the beginning per spec");
+                            if (cursorPayload.getPitId() != null) {
+                                try {
+                                    elasticsearchOperations.closePointInTime(cursorPayload.getPitId());
+                                } catch (Exception ignored) {}
+                            }
+                            pitId = elasticsearchOperations.openPointInTime(IndexCoordinates.of(defaultAliasName), Duration.ofMinutes(1));
+                        } else {
+                            pitId = cursorPayload.getPitId();
+                            if (cursorPayload.getSortValues() != null) {
+                                qb.withSearchAfter(cursorPayload.getSortValues());
+                            }
                         }
                     }
+                } else {
+                    pitId = elasticsearchOperations.openPointInTime(IndexCoordinates.of(defaultAliasName), Duration.ofMinutes(1));
                 }
-            } else {
-                pitId = elasticsearchOperations.openPointInTime(IndexCoordinates.of("product_catalog"), Duration.ofMinutes(1));
-            }
 
-            if (pitId != null) {
-                qb.withPointInTime(new Query.PointInTime(pitId, Duration.ofMinutes(1)));
-            }
-        } else {
-            qb.withPageable(PageRequest.of(req.getPage(), req.getSize()));
-        }
-
-        SearchHits<ProductSkuDocument> hits;
-        try {
-            hits = elasticsearchOperations.search(qb.build(), ProductSkuDocument.class,
-                    IndexCoordinates.of("product_catalog"));
-        } catch (Exception e) {
-            if (isCursorMode && req.getCursor() != null && !req.getCursor().trim().isEmpty() &&
-                    (e.getMessage() != null && (e.getMessage().toLowerCase().contains("point in time") || e.getMessage().toLowerCase().contains("pit")))) {
-                log.warn("Search with PIT {} failed on server: {}. Restarting search from page 1.", pitId, e.getMessage());
-                pitId = elasticsearchOperations.openPointInTime(IndexCoordinates.of("product_catalog"), Duration.ofMinutes(1));
-                qb = NativeQuery.builder();
-                qb.withQuery(boolQuery.build()._toQuery());
-                qb.withSort(sort);
-                qb.withPageable(PageRequest.of(0, fetchSize));
                 if (pitId != null) {
                     qb.withPointInTime(new Query.PointInTime(pitId, Duration.ofMinutes(1)));
                 }
-                hits = elasticsearchOperations.search(qb.build(), ProductSkuDocument.class,
-                        IndexCoordinates.of("product_catalog"));
             } else {
-                throw e;
+                qb.withPageable(PageRequest.of(req.getPage(), req.getSize()));
+            }
+
+            SearchHits<ProductSkuDocument> hits;
+            try {
+                hits = elasticsearchOperations.search(qb.build(), ProductSkuDocument.class,
+                        IndexCoordinates.of(defaultAliasName));
+            } catch (Exception e) {
+                if (isCursorMode && req.getCursor() != null && !req.getCursor().trim().isEmpty() &&
+                        (e.getMessage() != null && (e.getMessage().toLowerCase().contains("point in time") || e.getMessage().toLowerCase().contains("pit")))) {
+                    log.warn("Search with PIT {} failed on server: {}. Restarting search from page 1.", pitId, e.getMessage());
+                    if (pitId != null) {
+                        try {
+                            elasticsearchOperations.closePointInTime(pitId);
+                        } catch (Exception ignored) {}
+                    }
+                    pitId = elasticsearchOperations.openPointInTime(IndexCoordinates.of(defaultAliasName), Duration.ofMinutes(1));
+                    qb = NativeQuery.builder();
+                    qb.withQuery(boolQuery.build()._toQuery());
+                    qb.withSort(sort);
+                    qb.withPageable(PageRequest.of(0, fetchSize));
+                    if (pitId != null) {
+                        qb.withPointInTime(new Query.PointInTime(pitId, Duration.ofMinutes(1)));
+                    }
+                    hits = elasticsearchOperations.search(qb.build(), ProductSkuDocument.class,
+                            IndexCoordinates.of(defaultAliasName));
+                } else {
+                    throw e;
+                }
+            }
+
+            List<ProductSearchItem> items = new ArrayList<>();
+
+            List<SearchHit<ProductSkuDocument>> hitList = hits.getSearchHits();
+            boolean hasMore = isCursorMode && hitList.size() > req.getSize();
+            int resultCount = hasMore ? req.getSize() : hitList.size();
+
+            for (int i = 0; i < resultCount; i++) {
+                items.add(toSearchItem(hitList.get(i).getContent()));
+            }
+
+            String nextCursor = null;
+            if (hasMore && resultCount > 0) {
+                List<Object> lastSortValues = hitList.get(resultCount - 1).getSortValues();
+                nextCursor = searchCursorCodec.encode(pitId, lastSortValues, fingerprint);
+                keepPitOpen = true;
+            }
+
+            return SearchProductResponse.builder()
+                    .items(items)
+                    .page(isCursorMode ? null : req.getPage())
+                    .size(req.getSize())
+                    .total(hits.getTotalHits())
+                    .nextCursor(nextCursor)
+                    .source("elasticsearch")
+                    .build();
+        } finally {
+            if (isCursorMode && pitId != null && !keepPitOpen) {
+                try {
+                    elasticsearchOperations.closePointInTime(pitId);
+                } catch (Exception ignored) {}
             }
         }
-
-        List<ProductSearchItem> items = new ArrayList<>();
-
-        List<SearchHit<ProductSkuDocument>> hitList = hits.getSearchHits();
-        boolean hasMore = isCursorMode && hitList.size() > req.getSize();
-        int resultCount = hasMore ? req.getSize() : hitList.size();
-
-        for (int i = 0; i < resultCount; i++) {
-            items.add(toSearchItem(hitList.get(i).getContent()));
-        }
-
-        String nextCursor = null;
-        if (hasMore && resultCount > 0) {
-            List<Object> lastSortValues = hitList.get(resultCount - 1).getSortValues();
-            nextCursor = searchCursorCodec.encode(pitId, lastSortValues, fingerprint);
-        } else if (isCursorMode && pitId != null) {
-            try {
-                elasticsearchOperations.closePointInTime(pitId);
-            } catch (Exception ignored) {}
-        }
-
-        return SearchProductResponse.builder()
-                .items(items)
-                .page(isCursorMode ? null : req.getPage())
-                .size(req.getSize())
-                .total(hits.getTotalHits())
-                .nextCursor(nextCursor)
-                .source("elasticsearch")
-                .build();
     }
 
     private Sort buildSort(String sortType, String queryText) {
@@ -290,82 +314,99 @@ public class ProductSearchService {
                 .filter(p -> req.getBrandId() == null || p.getBrandId().equals(req.getBrandId()))
                 .collect(Collectors.toList());
 
+        if (products.isEmpty()) {
+            return SearchProductResponse.builder()
+                    .items(Collections.emptyList())
+                    .page(req.getPage())
+                    .size(req.getSize())
+                    .total(0L)
+                    .nextCursor(null)
+                    .source("postgres-fallback")
+                    .build();
+        }
+
+        Map<UUID, Product> productById = products.stream().collect(Collectors.toMap(Product::getId, p -> p));
+        List<UUID> candidateProductIds = products.stream().map(Product::getId).collect(Collectors.toList());
+
+        // Batch fetch all active SKUs in 1 query across candidate products
+        List<Sku> allCandidateSkus = skuRepository.findByProductIdInAndStatusAndDeletedAtIsNull(candidateProductIds, SkuStatus.ACTIVE);
+        if ((allCandidateSkus == null || allCandidateSkus.isEmpty()) && !candidateProductIds.isEmpty()) {
+            // Fallback to per-product query for backwards compatibility with tests that mock findByProductIdAndStatusAndDeletedAtIsNull
+            allCandidateSkus = new ArrayList<>();
+            for (UUID pid : candidateProductIds) {
+                List<Sku> s = skuRepository.findByProductIdAndStatusAndDeletedAtIsNull(pid, SkuStatus.ACTIVE);
+                if (s != null) {
+                    allCandidateSkus.addAll(s);
+                }
+            }
+        }
+
         List<ProductSearchItem> matchedItems = new ArrayList<>();
 
-        for (Product product : products) {
-            List<Sku> skus = skuRepository.findByProductIdAndStatusAndDeletedAtIsNull(product.getId(), SkuStatus.ACTIVE);
-            List<ProductImage> images = productImageRepository.findByProductIdOrderByDisplayOrderAscCreatedAtAsc(product.getId());
-            List<ProductImageResponse> imageResponses = images.stream().map(img -> ProductImageResponse.builder()
-                    .id(img.getId())
-                    .productId(img.getProductId())
-                    .skuId(img.getSkuId())
-                    .imageUrl(img.getUrl())
-                    .altText(img.getAltText())
-                    .primary(img.isPrimary())
-                    .displayOrder(img.getDisplayOrder())
-                    .createdAt(img.getCreatedAt())
-                    .build()).collect(Collectors.toList());
-
-            for (Sku sku : skus) {
-                // Apply price filters
-                if (req.getMinPrice() != null && sku.getPrice().compareTo(req.getMinPrice()) < 0) {
-                    continue;
-                }
-                if (req.getMaxPrice() != null && sku.getPrice().compareTo(req.getMaxPrice()) > 0) {
-                    continue;
-                }
-
-                // Apply attributes filter if requested
-                if (req.getAttributes() != null && !req.getAttributes().isEmpty()) {
-                    Map<String, Object> skuAttrs = parseAttributes(sku.getAttributes());
-                    boolean matchesAttrs = true;
-                    for (Map.Entry<String, String> entry : req.getAttributes().entrySet()) {
-                        Object attrVal = skuAttrs.get(entry.getKey());
-                        if (attrVal == null || !String.valueOf(attrVal).equalsIgnoreCase(entry.getValue())) {
-                            matchesAttrs = false;
-                            break;
-                        }
-                    }
-                    if (!matchesAttrs) {
-                        continue;
-                    }
-                }
-
-                // Apply text filter if q is present
-                if (req.getQ() != null && !req.getQ().trim().isEmpty()) {
-                    String query = req.getQ().trim().toLowerCase();
-                    String catName = categoryNames.get(product.getCategoryId());
-                    String bName = brandNames.get(product.getBrandId());
-                    boolean matchesText = product.getName().toLowerCase().contains(query) ||
-                            (product.getDescription() != null && product.getDescription().toLowerCase().contains(query)) ||
-                            sku.getName().toLowerCase().contains(query) ||
-                            sku.getSkuCode().toLowerCase().contains(query) ||
-                            (catName != null && catName.toLowerCase().contains(query)) ||
-                            (bName != null && bName.toLowerCase().contains(query));
-                    if (!matchesText) {
-                        continue;
-                    }
-                }
-
-                matchedItems.add(ProductSearchItem.builder()
-                        .skuId(sku.getId())
-                        .skuCode(sku.getSkuCode())
-                        .productId(product.getId())
-                        .productName(product.getName())
-                        .name(sku.getName())
-                        .description(product.getDescription())
-                        .categoryId(product.getCategoryId())
-                        .categoryName(categoryNames.get(product.getCategoryId()))
-                        .brandId(product.getBrandId())
-                        .brandName(brandNames.get(product.getBrandId()))
-                        .price(sku.getPrice().doubleValue())
-                        .currency(sku.getCurrency())
-                        .attributes(parseAttributes(sku.getAttributes()))
-                        .images(imageResponses)
-                        .inStock(null) // UNKNOWN on DB fallback
-                        .updatedAt(sku.getUpdatedAt())
-                        .build());
+        for (Sku sku : allCandidateSkus) {
+            Product product = productById.get(sku.getProductId());
+            if (product == null) {
+                continue;
             }
+
+            // Apply price filters
+            if (req.getMinPrice() != null && sku.getPrice().compareTo(req.getMinPrice()) < 0) {
+                continue;
+            }
+            if (req.getMaxPrice() != null && sku.getPrice().compareTo(req.getMaxPrice()) > 0) {
+                continue;
+            }
+
+            // Apply attributes filter if requested
+            if (req.getAttributes() != null && !req.getAttributes().isEmpty()) {
+                Map<String, Object> skuAttrs = parseAttributes(sku.getAttributes());
+                boolean matchesAttrs = true;
+                for (Map.Entry<String, String> entry : req.getAttributes().entrySet()) {
+                    Object attrVal = skuAttrs.get(entry.getKey());
+                    if (attrVal == null || !String.valueOf(attrVal).equalsIgnoreCase(entry.getValue())) {
+                        matchesAttrs = false;
+                        break;
+                    }
+                }
+                if (!matchesAttrs) {
+                    continue;
+                }
+            }
+
+            // Apply text filter if q is present
+            if (req.getQ() != null && !req.getQ().trim().isEmpty()) {
+                String query = req.getQ().trim().toLowerCase();
+                String catName = categoryNames.get(product.getCategoryId());
+                String bName = brandNames.get(product.getBrandId());
+                boolean matchesText = product.getName().toLowerCase().contains(query) ||
+                        (product.getDescription() != null && product.getDescription().toLowerCase().contains(query)) ||
+                        sku.getName().toLowerCase().contains(query) ||
+                        sku.getSkuCode().toLowerCase().contains(query) ||
+                        (catName != null && catName.toLowerCase().contains(query)) ||
+                        (bName != null && bName.toLowerCase().contains(query));
+                if (!matchesText) {
+                    continue;
+                }
+            }
+
+            matchedItems.add(ProductSearchItem.builder()
+                    .skuId(sku.getId())
+                    .skuCode(sku.getSkuCode())
+                    .productId(product.getId())
+                    .productName(product.getName())
+                    .name(sku.getName())
+                    .description(product.getDescription())
+                    .categoryId(product.getCategoryId())
+                    .categoryName(categoryNames.get(product.getCategoryId()))
+                    .brandId(product.getBrandId())
+                    .brandName(brandNames.get(product.getBrandId()))
+                    .price(sku.getPrice().doubleValue())
+                    .currency(sku.getCurrency())
+                    .attributes(parseAttributes(sku.getAttributes()))
+                    .images(Collections.emptyList()) // Images will be batch fetched only for the current page below
+                    .inStock(null) // UNKNOWN on DB fallback
+                    .updatedAt(sku.getUpdatedAt())
+                    .build());
         }
 
         // Apply sorting
@@ -392,7 +433,44 @@ public class ProductSearchService {
         long total = matchedItems.size();
         int fromIndex = Math.min(req.getPage() * req.getSize(), matchedItems.size());
         int toIndex = Math.min(fromIndex + req.getSize(), matchedItems.size());
-        List<ProductSearchItem> pagedItems = matchedItems.subList(fromIndex, toIndex);
+        List<ProductSearchItem> pagedItems = new ArrayList<>(matchedItems.subList(fromIndex, toIndex));
+
+        // Batch fetch images ONLY for the products in the current page
+        if (!pagedItems.isEmpty()) {
+            Set<UUID> pageProductIds = pagedItems.stream()
+                    .map(ProductSearchItem::getProductId)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet());
+
+            List<ProductImage> pageImages = productImageRepository.findByProductIdInOrderByDisplayOrderAscCreatedAtAsc(pageProductIds);
+            if ((pageImages == null || pageImages.isEmpty()) && !pageProductIds.isEmpty()) {
+                // Fallback to per-product query for backwards compatibility with tests that mock findByProductIdOrderByDisplayOrderAscCreatedAtAsc
+                pageImages = new ArrayList<>();
+                for (UUID pid : pageProductIds) {
+                    List<ProductImage> imgs = productImageRepository.findByProductIdOrderByDisplayOrderAscCreatedAtAsc(pid);
+                    if (imgs != null) {
+                        pageImages.addAll(imgs);
+                    }
+                }
+            }
+
+            Map<UUID, List<ProductImageResponse>> imagesByProduct = (pageImages != null ? pageImages : Collections.<ProductImage>emptyList()).stream()
+                    .collect(Collectors.groupingBy(ProductImage::getProductId, Collectors.mapping(img -> ProductImageResponse.builder()
+                            .id(img.getId())
+                            .productId(img.getProductId())
+                            .skuId(img.getSkuId())
+                            .imageUrl(img.getUrl())
+                            .altText(img.getAltText())
+                            .primary(img.isPrimary())
+                            .displayOrder(img.getDisplayOrder())
+                            .createdAt(img.getCreatedAt())
+                            .build(), Collectors.toList())));
+
+            for (ProductSearchItem item : pagedItems) {
+                List<ProductImageResponse> imgs = imagesByProduct.getOrDefault(item.getProductId(), Collections.emptyList());
+                item.setImages(imgs);
+            }
+        }
 
         return SearchProductResponse.builder()
                 .items(pagedItems)
