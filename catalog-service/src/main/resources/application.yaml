@@ -6,6 +6,59 @@ spring:
     name: catalog-service
   config:
     import: "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:${DATASOURCE_URL:jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/catalog_db}}
+    username: ${SPRING_DATASOURCE_USERNAME:${DATASOURCE_USERNAME:${POSTGRES_USER:postgres}}}
+    password: ${SPRING_DATASOURCE_PASSWORD:${DATASOURCE_PASSWORD:${POSTGRES_PASSWORD:postgres}}}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        default_batch_fetch_size: 50
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
   kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: ${CATALOG_KAFKA_CONSUMER_GROUP:catalog-service-group}
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      acks: all
+      retries: 3
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
     listener:
       ack-mode: manual
+
+  elasticsearch:
+    uris: ${ELASTICSEARCH_URIS:${ELASTICSEARCH_HOST:localhost}:${ELASTICSEARCH_PORT:9200}}
+    enabled: true
+  data:
+    elasticsearch:
+      repositories:
+        enabled: true
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka/}
+
+catalog:
+  index:
+    name: ${CATALOG_INDEX_NAME:product_catalog}
+
+security:
+  gateway-assertion:
+    public-key: "${GATEWAY_ASSERTION_PUBLIC_KEY:-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1rYaNGEBN4TFHrxLtu91\natHxmWjLaEduLAEZsrGEMj1czx1iKP4DZjCIicBq/CAnrKx/hjum2yTgfV8HcaBR\nY1dcQ5Mzix4nRCx3EjWyUEdFkGr9Li9PORUU4O+NMpg0BfUhBeclkx78oz4rq3wd\nBWXBHBmPPPLbKACHQnUCwynUmFm7u/2VUbF8ynuOBJFETtk1xO5krePJpp8yKlc5\ngddhRDhl9GS7+n/em/HVBkZx4NLJUJS9Y4M12euiHsZrZLJUVDL2hGbjPWWB+JPb\niqYNaD+QGVr9+go5NKHUCwXot/D7UIjI14d0xQYiVKZqqDzwgJyoGHTQxyH8EkxK\nnwIDAQAB\n-----END PUBLIC KEY-----}"
+  internal-service-keys:
+    order-service: "${INTERNAL_KEY_ORDER:e0de2d8d12cf23ec3ba59b392e0b52ee776e02cb8bc8dcdf30832fe86524c6e0}"
+    notification-service: "${INTERNAL_KEY_NOTIFICATION:9872c97a97c4a59def15e508794d867b8c7a24bbc170588ec154c65c878953ff}"
+    payment-service: "${INTERNAL_KEY_PAYMENT:a1fb2971af06749e5ef5f695720338b5611f6fa8d51bbbb476db7ab2eec22319}"

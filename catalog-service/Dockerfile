@@ -3,6 +3,7 @@ WORKDIR /workspace
 
 COPY gradlew settings.gradle build.gradle gradle.properties ./
 COPY gradle ./gradle
+COPY common-library ./common-library
 COPY catalog-service ./catalog-service
 
 RUN chmod +x gradlew && ./gradlew :catalog-service:bootJar --no-daemon -x test

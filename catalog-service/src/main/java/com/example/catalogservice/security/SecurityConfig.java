@@ -46,6 +46,7 @@ public class SecurityConfig {
                         .requestMatchers("/internal/**").authenticated()
                         // Administrator-only endpoints
                         .requestMatchers("/api/v1/catalog/admin/reindex", "/api/v1/catalog/admin/reindex/**").hasRole("ADMINISTRATOR")
+                        .requestMatchers("/api/v1/catalog/admin/audit-logs", "/api/v1/catalog/admin/audit-logs/**").hasRole("ADMINISTRATOR")
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/catalog/admin/categories/**").hasRole("ADMINISTRATOR")
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/catalog/admin/brands/**").hasRole("ADMINISTRATOR")
                         // Admin endpoints accessible by staff or administrator
